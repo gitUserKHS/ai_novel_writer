@@ -22,6 +22,7 @@ from .models import (
     BibleContent,
     GeneralistLoopRequest,
     HealthOut,
+    HFOnboardRequest,
     HFPullRequest,
     HFPublishRequest,
     OneClickLoopRequest,
@@ -216,6 +217,55 @@ def build_hf_pull_command(payload: HFPullRequest) -> List[str]:
     for pattern in payload.ignore_patterns:
         if pattern:
             command += ["--ignore-pattern", pattern]
+    return command
+
+
+def build_hf_onboard_command(payload: HFOnboardRequest, *, ui_presets_path: Path | None = None) -> List[str]:
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "onboard_hf_collaborator.py"),
+        "--repo-type",
+        payload.repo_type,
+        "--download-root",
+        str(_resolve_repo_path(payload.download_root, must_exist=False, allow_directory=True)),
+        "--package-dir",
+        str(_resolve_repo_path(payload.package_dir, must_exist=False, allow_directory=True)),
+        "--preset-name",
+        payload.preset_name,
+        "--provider",
+        payload.provider,
+        "--base-url",
+        payload.base_url,
+        "--api-key",
+        payload.api_key,
+        "--model",
+        payload.model,
+        "--temperature",
+        str(payload.temperature),
+        "--critic-temperature",
+        str(payload.critic_temperature),
+        "--max-tokens",
+        str(payload.max_tokens),
+    ]
+    if payload.writer_repo_id:
+        command += ["--writer-repo-id", payload.writer_repo_id]
+    if payload.critic_repo_id:
+        command += ["--critic-repo-id", payload.critic_repo_id]
+    if payload.world_repo_id:
+        command += ["--world-repo-id", payload.world_repo_id]
+    if payload.revision:
+        command += ["--revision", payload.revision]
+    for pattern in payload.allow_patterns:
+        if pattern:
+            command += ["--allow-pattern", pattern]
+    for pattern in payload.ignore_patterns:
+        if pattern:
+            command += ["--ignore-pattern", pattern]
+    _maybe_append_flag(command, payload.cache_responses, "--cache-responses")
+    if payload.save_ui_preset:
+        command.append("--save-ui-preset")
+        if ui_presets_path is not None:
+            command += ["--ui-presets-path", str(ui_presets_path)]
     return command
 
 
@@ -663,6 +713,16 @@ def create_app(config: AppConfig) -> FastAPI:
             return run_process_job(command, emit)
 
         job = jobs.submit("hf_pull", None, runner)
+        return job.model_dump()
+
+    @app.post("/api/system/jobs/hf-onboard")
+    def submit_hf_onboard_job(payload: HFOnboardRequest) -> Dict[str, Any]:
+        command = build_hf_onboard_command(payload, ui_presets_path=Path(ui_preset_store.path))
+
+        def runner(emit):
+            return run_process_job(command, emit)
+
+        job = jobs.submit("hf_onboard", None, runner)
         return job.model_dump()
 
     return app

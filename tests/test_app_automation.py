@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from conarrative.app import (
     build_generalist_command,
+    build_hf_onboard_command,
     build_hf_pull_command,
     build_hf_publish_command,
     build_one_click_command,
@@ -17,7 +18,14 @@ from conarrative.app import (
     create_app,
 )
 from conarrative.config import load_config
-from conarrative.models import GeneralistLoopRequest, HFPullRequest, HFPublishRequest, OneClickLoopRequest, TrainingRunRequest
+from conarrative.models import (
+    GeneralistLoopRequest,
+    HFOnboardRequest,
+    HFPullRequest,
+    HFPublishRequest,
+    OneClickLoopRequest,
+    TrainingRunRequest,
+)
 
 
 def write_test_config(tmp_path: Path) -> Path:
@@ -164,6 +172,23 @@ def test_build_hf_commands_support_repo_sync() -> None:
     assert "--allow-pattern" in pull_cmd
     assert "--ignore-pattern" in pull_cmd
 
+    onboard_cmd = build_hf_onboard_command(
+        HFOnboardRequest(
+            writer_repo_id="your-org/conarrative-writer-qwen3-4b-sft-lora",
+            critic_repo_id="your-org/conarrative-critic-qwen3-4b-consistency-lora",
+            world_repo_id="your-org/conarrative-world-model-qwen3-4b-sft-lora",
+            preset_name="team-runtime",
+            save_ui_preset=True,
+        ),
+        ui_presets_path=Path("workspace/ui_presets.json"),
+    )
+    assert "onboard_hf_collaborator.py" in onboard_cmd[1]
+    assert "--writer-repo-id" in onboard_cmd
+    assert "--critic-repo-id" in onboard_cmd
+    assert "--world-repo-id" in onboard_cmd
+    assert "--save-ui-preset" in onboard_cmd
+    assert "--ui-presets-path" in onboard_cmd
+
 
 def test_system_job_endpoints_submit_and_complete(tmp_path: Path, monkeypatch) -> None:
     config_path = write_test_config(tmp_path)
@@ -240,6 +265,20 @@ def test_system_job_endpoints_submit_and_complete(tmp_path: Path, monkeypatch) -
     assert hf_pull.status_code == 200
     hf_pull_job = wait_for_job(client, hf_pull.json()["id"])
     assert hf_pull_job["status"] == "succeeded"
+
+    hf_onboard = client.post(
+        "/api/system/jobs/hf-onboard",
+        json={
+            "writer_repo_id": "your-org/conarrative-writer-qwen3-4b-sft-lora",
+            "critic_repo_id": "your-org/conarrative-critic-qwen3-4b-consistency-lora",
+            "world_repo_id": "your-org/conarrative-world-model-qwen3-4b-sft-lora",
+            "preset_name": "team-runtime",
+            "save_ui_preset": True,
+        },
+    )
+    assert hf_onboard.status_code == 200
+    hf_onboard_job = wait_for_job(client, hf_onboard.json()["id"])
+    assert hf_onboard_job["status"] == "succeeded"
 
 
 def test_story_import_and_ui_preset_endpoints(tmp_path: Path) -> None:

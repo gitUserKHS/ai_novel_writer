@@ -6,6 +6,7 @@ import json
 import locale
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
@@ -16,6 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from conarrative.model_refs import is_adapter_reference
+from conarrative.training_metadata import build_training_metadata, write_training_metadata
 from conarrative.utils import short_text, stable_hash
 
 
@@ -432,6 +434,64 @@ def training_callbacks(cfg: Dict[str, Any], stack: Dict[str, Any], has_eval: boo
     return [stack["EarlyStoppingCallback"](early_stopping_patience=int(cfg["early_stopping_patience"]))]
 
 
+def trainer_state_snapshot(trainer: Any) -> dict[str, Any]:
+    state = getattr(trainer, "state", None)
+    if state is None:
+        return {}
+    return {
+        "global_step": getattr(state, "global_step", 0),
+        "epoch": getattr(state, "epoch", 0),
+        "best_metric": getattr(state, "best_metric", None),
+        "best_model_checkpoint": getattr(state, "best_model_checkpoint", None),
+        "best_global_step": getattr(state, "best_global_step", None),
+        "train_batch_size": getattr(state, "train_batch_size", None),
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def save_training_outputs(
+    *,
+    cfg: Dict[str, Any],
+    tokenizer: Any,
+    trainer: Any,
+    mode: str,
+    train_rows: list[dict[str, Any]],
+    eval_rows: list[dict[str, Any]],
+    train_metrics: dict[str, Any] | None,
+    eval_metrics: dict[str, Any] | None,
+) -> None:
+    trainer.save_model(cfg["output_dir"])
+    tokenizer.save_pretrained(cfg["output_dir"])
+    metadata = build_training_metadata(
+        mode=mode,
+        model_name_or_path=str(cfg["model_name_or_path"]),
+        train_file=str(cfg["train_file"]),
+        eval_file=str(cfg.get("eval_file") or ""),
+        output_dir=str(cfg["output_dir"]),
+        dataset_format=str(cfg.get("dataset_format") or "auto"),
+        train_examples=len(train_rows),
+        eval_examples=len(eval_rows),
+        train_metrics=train_metrics,
+        eval_metrics=eval_metrics,
+        trainer_state=trainer_state_snapshot(trainer),
+        extra={
+            "load_in_4bit": bool(cfg.get("load_in_4bit")),
+            "lora_r": cfg.get("lora_r"),
+            "lora_alpha": cfg.get("lora_alpha"),
+            "lora_dropout": cfg.get("lora_dropout"),
+            "learning_rate": cfg.get("learning_rate"),
+            "per_device_train_batch_size": cfg.get("per_device_train_batch_size"),
+            "per_device_eval_batch_size": cfg.get("per_device_eval_batch_size"),
+            "gradient_accumulation_steps": cfg.get("gradient_accumulation_steps"),
+            "num_train_epochs": cfg.get("num_train_epochs"),
+            "max_seq_length": cfg.get("max_seq_length"),
+            "validation_split_ratio": cfg.get("validation_split_ratio"),
+            "seed": cfg.get("seed"),
+        },
+    )
+    write_training_metadata(cfg["output_dir"], metadata)
+
+
 def train_sft(cfg: Dict[str, Any], stack: Dict[str, Any]) -> None:
     torch = stack["torch"]
     Dataset = stack["Dataset"]
@@ -458,9 +518,18 @@ def train_sft(cfg: Dict[str, Any], stack: Dict[str, Any]) -> None:
         peft_config=peft_config,
         callbacks=training_callbacks(cfg, stack, eval_dataset is not None),
     )
-    trainer.train()
-    trainer.save_model(cfg["output_dir"])
-    tokenizer.save_pretrained(cfg["output_dir"])
+    train_result = trainer.train()
+    eval_metrics = trainer.evaluate() if eval_dataset is not None else {}
+    save_training_outputs(
+        cfg=cfg,
+        tokenizer=tokenizer,
+        trainer=trainer,
+        mode="sft",
+        train_rows=train_rows,
+        eval_rows=eval_rows,
+        train_metrics=dict(getattr(train_result, "metrics", {}) or {}),
+        eval_metrics=dict(eval_metrics or {}),
+    )
 
 
 def train_distill(cfg: Dict[str, Any], stack: Dict[str, Any]) -> None:
@@ -489,9 +558,18 @@ def train_distill(cfg: Dict[str, Any], stack: Dict[str, Any]) -> None:
         peft_config=peft_config,
         callbacks=training_callbacks(cfg, stack, eval_dataset is not None),
     )
-    trainer.train()
-    trainer.save_model(cfg["output_dir"])
-    tokenizer.save_pretrained(cfg["output_dir"])
+    train_result = trainer.train()
+    eval_metrics = trainer.evaluate() if eval_dataset is not None else {}
+    save_training_outputs(
+        cfg=cfg,
+        tokenizer=tokenizer,
+        trainer=trainer,
+        mode="distill",
+        train_rows=train_rows,
+        eval_rows=eval_rows,
+        train_metrics=dict(getattr(train_result, "metrics", {}) or {}),
+        eval_metrics=dict(eval_metrics or {}),
+    )
 
 
 def train_dpo(cfg: Dict[str, Any], stack: Dict[str, Any]) -> None:
@@ -521,9 +599,18 @@ def train_dpo(cfg: Dict[str, Any], stack: Dict[str, Any]) -> None:
         peft_config=peft_config,
         callbacks=training_callbacks(cfg, stack, eval_dataset is not None),
     )
-    trainer.train()
-    trainer.save_model(cfg["output_dir"])
-    tokenizer.save_pretrained(cfg["output_dir"])
+    train_result = trainer.train()
+    eval_metrics = trainer.evaluate() if eval_dataset is not None else {}
+    save_training_outputs(
+        cfg=cfg,
+        tokenizer=tokenizer,
+        trainer=trainer,
+        mode="dpo",
+        train_rows=train_rows,
+        eval_rows=eval_rows,
+        train_metrics=dict(getattr(train_result, "metrics", {}) or {}),
+        eval_metrics=dict(eval_metrics or {}),
+    )
 
 
 def main() -> None:

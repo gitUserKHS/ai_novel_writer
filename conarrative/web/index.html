@@ -790,6 +790,113 @@
                     </div>
                     <button type="submit" class="primary-button">HF Pull ?ㅽ뻾</button>
                   </form>
+                  <div class="preset-bar">
+                    <label class="field">
+                      <span>Saved HF onboarding presets</span>
+                      <select id="hf-onboard-preset-select"></select>
+                    </label>
+                    <div class="action-stack horizontal">
+                      <button type="button" class="ghost-button compact" id="load-hf-onboard-preset-btn">Load</button>
+                      <button type="button" class="ghost-button compact" id="save-hf-onboard-preset-btn">Save</button>
+                      <button type="button" class="ghost-button compact" id="delete-hf-onboard-preset-btn">Delete</button>
+                    </div>
+                  </div>
+                  <form id="hf-onboard-form" class="stack form-stack">
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Writer repo id</span>
+                        <input name="writer_repo_id" placeholder="your-org/conarrative-writer-qwen3-4b-sft-lora" />
+                      </label>
+                      <label class="field">
+                        <span>Critic repo id</span>
+                        <input name="critic_repo_id" placeholder="your-org/conarrative-critic-qwen3-4b-consistency-lora" />
+                      </label>
+                      <label class="field">
+                        <span>World repo id</span>
+                        <input name="world_repo_id" placeholder="your-org/conarrative-world-model-qwen3-4b-sft-lora" />
+                      </label>
+                    </div>
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Preset name</span>
+                        <input name="preset_name" value="hf-collab-runtime" />
+                      </label>
+                      <label class="field">
+                        <span>Download root</span>
+                        <input name="download_root" value="outputs/hf_download" />
+                      </label>
+                      <label class="field">
+                        <span>Package dir</span>
+                        <input name="package_dir" value="outputs/hf_onboarding" />
+                      </label>
+                    </div>
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Provider</span>
+                        <input name="provider" value="ollama" />
+                      </label>
+                      <label class="field">
+                        <span>Base URL</span>
+                        <input name="base_url" value="http://127.0.0.1:11434" />
+                      </label>
+                      <label class="field">
+                        <span>Model</span>
+                        <input name="model" value="qwen3:4b" />
+                      </label>
+                    </div>
+                    <div class="three-col">
+                      <label class="field">
+                        <span>API key</span>
+                        <input name="api_key" value="ollama" />
+                      </label>
+                      <label class="field">
+                        <span>Revision</span>
+                        <input name="revision" value="" placeholder="main" />
+                      </label>
+                      <label class="field">
+                        <span>Repo type</span>
+                        <select name="repo_type">
+                          <option value="model">model</option>
+                          <option value="dataset">dataset</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Temperature</span>
+                        <input name="temperature" type="number" step="0.05" value="0.7" />
+                      </label>
+                      <label class="field">
+                        <span>Critic temp</span>
+                        <input name="critic_temperature" type="number" step="0.05" value="0.0" />
+                      </label>
+                      <label class="field">
+                        <span>Max tokens</span>
+                        <input name="max_tokens" type="number" min="128" value="1200" />
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Allow patterns</span>
+                        <textarea name="allow_patterns" rows="3" placeholder="adapter_*"></textarea>
+                      </label>
+                      <label class="field">
+                        <span>Ignore patterns</span>
+                        <textarea name="ignore_patterns" rows="3" placeholder="checkpoint-*"></textarea>
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field checkbox-field">
+                        <input name="cache_responses" type="checkbox" checked />
+                        <span>cache responses</span>
+                      </label>
+                      <label class="field checkbox-field">
+                        <input name="save_ui_preset" type="checkbox" checked />
+                        <span>save runtime preset locally</span>
+                      </label>
+                    </div>
+                    <button type="submit" class="primary-button">HF Onboarding Package</button>
+                  </form>
                   <form id="hf-browser-form" class="stack form-stack">
                     <div class="three-col">
                       <label class="field">

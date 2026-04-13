@@ -142,6 +142,12 @@ const presetKinds = {
     collect: () => collectHFPullPayload(document.getElementById("hf-pull-form")),
     apply: (payload) => fillHFPullForm(payload),
   },
+  hf_onboard: {
+    selectId: "hf-onboard-preset-select",
+    label: "hf-onboard",
+    collect: () => collectHFOnboardPayload(document.getElementById("hf-onboard-form")),
+    apply: (payload) => fillHFOnboardForm(payload),
+  },
 };
 
 function escapeHtml(value) {
@@ -353,6 +359,29 @@ function fillHFPullForm(payload) {
   form.ignore_patterns.value = (payload.ignore_patterns || []).join("\n");
 }
 
+function fillHFOnboardForm(payload) {
+  const form = document.getElementById("hf-onboard-form");
+  form.writer_repo_id.value = payload.writer_repo_id || "";
+  form.critic_repo_id.value = payload.critic_repo_id || "";
+  form.world_repo_id.value = payload.world_repo_id || "";
+  form.repo_type.value = payload.repo_type || "model";
+  form.revision.value = payload.revision || "";
+  form.download_root.value = payload.download_root || "outputs/hf_download";
+  form.package_dir.value = payload.package_dir || "outputs/hf_onboarding";
+  form.preset_name.value = payload.preset_name || "hf-collab-runtime";
+  form.provider.value = payload.provider || "ollama";
+  form.base_url.value = payload.base_url || "http://127.0.0.1:11434";
+  form.api_key.value = payload.api_key || "ollama";
+  form.model.value = payload.model || "qwen3:4b";
+  form.temperature.value = String(payload.temperature ?? 0.7);
+  form.critic_temperature.value = String(payload.critic_temperature ?? 0.0);
+  form.max_tokens.value = String(payload.max_tokens ?? 1200);
+  form.cache_responses.checked = payload.cache_responses !== false;
+  form.save_ui_preset.checked = payload.save_ui_preset !== false;
+  form.allow_patterns.value = (payload.allow_patterns || []).join("\n");
+  form.ignore_patterns.value = (payload.ignore_patterns || []).join("\n");
+}
+
 function collectRuntimePayload(form) {
   let roleModels = {};
   try {
@@ -450,6 +479,30 @@ function collectHFPullPayload(form) {
   };
 }
 
+function collectHFOnboardPayload(form) {
+  return {
+    writer_repo_id: form.writer_repo_id.value || "",
+    critic_repo_id: form.critic_repo_id.value || "",
+    world_repo_id: form.world_repo_id.value || "",
+    repo_type: form.repo_type.value || "model",
+    revision: form.revision.value || null,
+    download_root: form.download_root.value || "outputs/hf_download",
+    package_dir: form.package_dir.value || "outputs/hf_onboarding",
+    preset_name: form.preset_name.value || "hf-collab-runtime",
+    provider: form.provider.value || "ollama",
+    base_url: form.base_url.value || "http://127.0.0.1:11434",
+    api_key: form.api_key.value || "ollama",
+    model: form.model.value || "qwen3:4b",
+    temperature: Number(form.temperature.value || 0.7),
+    critic_temperature: Number(form.critic_temperature.value || 0.0),
+    max_tokens: Number(form.max_tokens.value || 1200),
+    cache_responses: !!form.cache_responses.checked,
+    save_ui_preset: !!form.save_ui_preset.checked,
+    allow_patterns: lines(form.allow_patterns.value),
+    ignore_patterns: lines(form.ignore_patterns.value),
+  };
+}
+
 function readRuntimeRoleModels() {
   const textarea = document.getElementById("runtime-form").role_models_json;
   try {
@@ -470,6 +523,20 @@ function bindRuntimeRoleModel(role, repoId) {
   writeRuntimeRoleModels(roleModels);
   setSelectedTab("runtime");
   logLine(`runtime role 연결: ${role} -> ${repoId}`);
+}
+
+function bindHFOnboardRole(role, repoId) {
+  const form = document.getElementById("hf-onboard-form");
+  if (!form) return;
+  if (role === "writer") {
+    form.writer_repo_id.value = repoId;
+  } else if (role === "critic") {
+    form.critic_repo_id.value = repoId;
+  } else if (role === "world") {
+    form.world_repo_id.value = repoId;
+  }
+  setSelectedTab("automation");
+  logLine(`hf onboarding role 연결: ${role} -> ${repoId}`);
 }
 
 function presetOptions(kind) {
@@ -992,6 +1059,9 @@ function renderHFBrowserResults(items) {
           <div class="action-stack horizontal">
             <button type="button" class="ghost-button compact" data-hf-repo-action="pull" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Use In Pull</button>
             <button type="button" class="ghost-button compact" data-hf-repo-action="training" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Use In Training</button>
+            ${item.repo_type === "model" ? `<button type="button" class="ghost-button compact" data-hf-onboard-role="writer" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Onboard Writer</button>` : ""}
+            ${item.repo_type === "model" ? `<button type="button" class="ghost-button compact" data-hf-onboard-role="critic" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Onboard Critic</button>` : ""}
+            ${item.repo_type === "model" ? `<button type="button" class="ghost-button compact" data-hf-onboard-role="world" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Onboard World</button>` : ""}
             ${item.repo_type === "model" ? `<button type="button" class="ghost-button compact" data-hf-bind-role="writer" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Writer</button>` : ""}
             ${item.repo_type === "model" ? `<button type="button" class="ghost-button compact" data-hf-bind-role="consistency_critic" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Critic</button>` : ""}
             ${item.repo_type === "model" ? `<button type="button" class="ghost-button compact" data-hf-bind-role="world_model" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">World</button>` : ""}
@@ -1005,7 +1075,7 @@ function renderHFBrowserResults(items) {
 async function refreshSystemJobs() {
   const data = await api("/api/jobs");
   const jobs = (data.items || []).filter((job) =>
-    ["one_click_loop", "generalist_loop", "training_run", "hf_publish", "hf_pull"].includes(job.job_type),
+    ["one_click_loop", "generalist_loop", "training_run", "hf_publish", "hf_pull", "hf_onboard"].includes(job.job_type),
   );
   const container = document.getElementById("system-job-list");
   container.innerHTML = "";
@@ -1322,6 +1392,20 @@ async function submitHFPullJob(event) {
   });
 }
 
+async function submitHFOnboardJob(event) {
+  event.preventDefault();
+  await runTask("HF onboarding 실행", async () => {
+    const payload = collectHFOnboardPayload(event.target);
+    const job = await api("/api/system/jobs/hf-onboard", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    logLine(`hf onboarding job 시작: ${job.id}`);
+    setSelectedTab("automation");
+    await refreshSystemJobs();
+  });
+}
+
 async function browseHFRepos(event) {
   event.preventDefault();
   await runTask("HF Browse", async () => {
@@ -1371,6 +1455,10 @@ function handleHFRepoResultClick(event) {
   const repoId = button.dataset.repoId;
   const repoType = button.dataset.repoType || "model";
   if (!repoId) {
+    return;
+  }
+  if (button.dataset.hfOnboardRole) {
+    bindHFOnboardRole(button.dataset.hfOnboardRole, repoId);
     return;
   }
   if (button.dataset.hfBindRole) {
@@ -1430,6 +1518,10 @@ function bindHFExtraControls() {
   document.getElementById("save-hf-pull-preset-btn").addEventListener("click", () => runTask("hf pull preset save", () => saveCurrentPreset("hf_pull")));
   document.getElementById("delete-hf-pull-preset-btn").addEventListener("click", () => runTask("hf pull preset delete", () => deleteSavedPreset("hf_pull")));
 
+  document.getElementById("load-hf-onboard-preset-btn").addEventListener("click", () => runTask("hf onboard preset load", () => loadSavedPreset("hf_onboard")));
+  document.getElementById("save-hf-onboard-preset-btn").addEventListener("click", () => runTask("hf onboard preset save", () => saveCurrentPreset("hf_onboard")));
+  document.getElementById("delete-hf-onboard-preset-btn").addEventListener("click", () => runTask("hf onboard preset delete", () => deleteSavedPreset("hf_onboard")));
+
   document.getElementById("suggest-hf-publish-btn").addEventListener("click", () => suggestHFPublishRelease());
   document.getElementById("hf-browser-form").addEventListener("submit", browseHFRepos);
   document.getElementById("hf-browser-results").addEventListener("click", handleHFRepoResultClick);
@@ -1445,6 +1537,7 @@ function bindActions() {
   document.getElementById("training-form").addEventListener("submit", submitTrainingJob);
   document.getElementById("hf-publish-form").addEventListener("submit", submitHFPublishJob);
   document.getElementById("hf-pull-form").addEventListener("submit", submitHFPullJob);
+  document.getElementById("hf-onboard-form").addEventListener("submit", submitHFOnboardJob);
   document.getElementById("refresh-story-btn").addEventListener("click", () => runTask("동기화", refreshStory));
   document.getElementById("refresh-story-list-btn").addEventListener("click", () => runTask("스토리 목록 새로고침", loadStories));
   document.getElementById("generate-outline-btn").addEventListener("click", generateOutline);

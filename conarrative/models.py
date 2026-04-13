@@ -406,6 +406,28 @@ class HFPullRequest(BaseModel):
     ignore_patterns: List[str] = Field(default_factory=list)
 
 
+class HFOnboardRequest(BaseModel):
+    writer_repo_id: str = ""
+    critic_repo_id: str = ""
+    world_repo_id: str = ""
+    repo_type: str = "model"
+    revision: Optional[str] = None
+    download_root: str = "outputs/hf_download"
+    package_dir: str = "outputs/hf_onboarding"
+    preset_name: str = "hf-collab-runtime"
+    provider: str = "ollama"
+    base_url: str = "http://127.0.0.1:11434"
+    api_key: str = "ollama"
+    model: str = "qwen3:4b"
+    temperature: float = 0.7
+    critic_temperature: float = 0.0
+    max_tokens: int = 1200
+    cache_responses: bool = False
+    allow_patterns: List[str] = Field(default_factory=list)
+    ignore_patterns: List[str] = Field(default_factory=list)
+    save_ui_preset: bool = True
+
+
 class StoryImportRequest(BaseModel):
     yaml_text: str
 
