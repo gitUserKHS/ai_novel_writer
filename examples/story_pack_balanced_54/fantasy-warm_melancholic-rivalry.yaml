@@ -1,0 +1,22 @@
+id: fantasy-warm_melancholic-rivalry
+title: Oath Late-Autumn Ink Seal
+genre: low fantasy intrigue
+tone: warm but melancholic
+premise: A temple scribe enters a quiet rivalry over a contested ink seal in the ash
+  market, only to learn both sides are being steered toward the same trap.
+themes:
+- oath
+- debt
+- kinship
+- care
+characters:
+- Hajin
+- Boram
+- Taemin
+constraints:
+- magic has a cost
+- no resurrection
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

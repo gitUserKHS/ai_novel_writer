@@ -1,0 +1,22 @@
+id: fantasy-lyrical_tense-coverup
+title: Oath Haunted Votive Bell
+genre: low fantasy intrigue
+tone: lyrical and tense
+premise: When a routine handoff in the ash market fails, a courier realizes the official
+  story around a votive bell was engineered to redirect blame.
+themes:
+- oath
+- debt
+- kinship
+- grief
+characters:
+- Yujin
+- Taesu
+- Jihye
+constraints:
+- magic has a cost
+- no resurrection
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko

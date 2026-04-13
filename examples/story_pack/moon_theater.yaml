@@ -1,0 +1,19 @@
+id: moon-theater
+title: 달빛 극장
+genre: 미스터리 판타지
+tone: 서정적이고 불길함
+premise: 폐관을 앞둔 극장에서 서윤은 사라진 동생의 흔적을 발견한다.
+themes:
+  - 기억
+  - 상실
+  - 선택
+characters:
+  - 서윤
+  - 민호
+  - 유진
+constraints:
+  - 시간 이동 없음
+  - 죽은 자 부활 없음
+target_scene_count: 6
+target_word_count: 9000
+language: ko

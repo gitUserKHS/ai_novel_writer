@@ -1,0 +1,23 @@
+id: thriller-lyrical_tense-rivalry
+title: Pressure Breath-Held Elevator Key
+genre: urban thriller
+tone: lyrical and tense
+premise: A field producer enters a quiet rivalry over a contested elevator key in
+  the election office, only to learn both sides are being steered toward the same
+  trap.
+themes:
+- pressure
+- trust
+- exposure
+- grief
+characters:
+- Narin
+- Dowan
+- Mira
+constraints:
+- no superpowers
+- no invincible protagonist
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

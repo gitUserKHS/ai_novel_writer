@@ -1,0 +1,22 @@
+id: fantasy-lyrical_tense-rivalry
+title: Oath Rain-Streaked Ink Seal
+genre: low fantasy intrigue
+tone: lyrical and tense
+premise: A oath broker enters a quiet rivalry over a contested ink seal in the mountain
+  court, only to learn both sides are being steered toward the same trap.
+themes:
+- oath
+- debt
+- kinship
+- grief
+characters:
+- Narin
+- Dowan
+- Mira
+constraints:
+- magic has a cost
+- no resurrection
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

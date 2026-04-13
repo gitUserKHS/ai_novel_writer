@@ -1,0 +1,22 @@
+id: historical-precise_cool-coverup
+title: Ledger Steel-Lit Ship Registry
+genre: historical drama
+tone: precise and cool-headed
+premise: When a routine handoff in the colonial customs hall fails, a translator realizes
+  the official story around a ship registry was engineered to redirect blame.
+themes:
+- record
+- class
+- duty
+- control
+characters:
+- Sion
+- Ara
+- Hyobin
+constraints:
+- period-accurate technology only
+- no prophecy shortcuts
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko

@@ -1,0 +1,22 @@
+id: thriller-lyrical_tense-search
+title: Pressure Haunted Burner Phone
+genre: urban thriller
+tone: lyrical and tense
+premise: A fixer finds the first trace of a vanished burner phone in the subway interchange,
+  and the discovery points back to a decision nobody wants reopened.
+themes:
+- pressure
+- trust
+- exposure
+- grief
+characters:
+- Seorin
+- Minjae
+- Haeun
+constraints:
+- no superpowers
+- no invincible protagonist
+- keep the conflict centered on search
+target_scene_count: 5
+target_word_count: 7500
+language: ko

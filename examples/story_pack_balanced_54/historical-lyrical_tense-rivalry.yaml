@@ -1,0 +1,23 @@
+id: historical-lyrical_tense-rivalry
+title: Ledger Haunted Proof Sheet
+genre: historical drama
+tone: lyrical and tense
+premise: A ledger clerk enters a quiet rivalry over a contested proof sheet in the
+  colonial customs hall, only to learn both sides are being steered toward the same
+  trap.
+themes:
+- record
+- class
+- duty
+- grief
+characters:
+- Narin
+- Dowan
+- Mira
+constraints:
+- period-accurate technology only
+- no prophecy shortcuts
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

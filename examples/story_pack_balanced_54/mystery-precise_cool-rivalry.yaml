@@ -1,0 +1,22 @@
+id: mystery-precise_cool-rivalry
+title: Hidden Steel-Lit Missing Reel
+genre: mystery drama
+tone: precise and cool-headed
+premise: A stage manager enters a quiet rivalry over a contested missing reel in the
+  sealed theater, only to learn both sides are being steered toward the same trap.
+themes:
+- memory
+- evidence
+- choice
+- control
+characters:
+- Dajung
+- Iseul
+- Kyungmin
+constraints:
+- no magic
+- no time travel
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

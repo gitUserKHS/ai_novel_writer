@@ -1,0 +1,22 @@
+id: contemporary-lyrical_tense-coverup
+title: Quiet Haunted Voice Memo
+genre: contemporary emotional drama
+tone: lyrical and tense
+premise: When a routine handoff in the regional campus fails, a lab tutor realizes
+  the official story around a voice memo was engineered to redirect blame.
+themes:
+- repair
+- belonging
+- silence
+- grief
+characters:
+- Yujin
+- Taesu
+- Jihye
+constraints:
+- no supernatural twist
+- keep the stakes human-scale
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko

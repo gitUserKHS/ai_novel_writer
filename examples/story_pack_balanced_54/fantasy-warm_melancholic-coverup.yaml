@@ -1,0 +1,22 @@
+id: fantasy-warm_melancholic-coverup
+title: Oath Tender Votive Bell
+genre: low fantasy intrigue
+tone: warm but melancholic
+premise: When a routine handoff in the river shrine fails, a oath broker realizes
+  the official story around a votive bell was engineered to redirect blame.
+themes:
+- oath
+- debt
+- kinship
+- care
+characters:
+- Yeonwoo
+- Minki
+- Sera
+constraints:
+- magic has a cost
+- no resurrection
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko

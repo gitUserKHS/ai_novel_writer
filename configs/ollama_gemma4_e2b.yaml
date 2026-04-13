@@ -1,0 +1,37 @@
+app_name: CoNarrative AutoNovel Studio
+workspace:
+  root: workspace_ollama_gemma4_e2b
+  database_path: workspace_ollama_gemma4_e2b/conarrative.db
+  exports_dir: workspace_ollama_gemma4_e2b/exports
+  runtime_settings_path: workspace_ollama_gemma4_e2b/runtime_settings.json
+backend:
+  provider: openai_compatible
+  base_url: http://127.0.0.1:11434/v1
+  api_key: ollama
+  model: gemma4:e2b
+  timeout_seconds: 600
+  temperature: 0.8
+  critic_temperature: 0.15
+  max_tokens: 1200
+  extra_headers: {}
+  role_models:
+    planner: gemma4:e2b
+    writer: gemma4:e2b
+    consistency_critic: gemma4:e2b
+    creativity_critic: gemma4:e2b
+    revision: gemma4:e2b
+    extractor: gemma4:e2b
+  cache_responses: true
+  cache_dir: workspace_ollama_gemma4_e2b/cache
+orchestration:
+  recent_scene_memory: 3
+  candidate_count: 1
+  scene_min_words: 160
+  scene_max_words: 260
+  adaptive_outline: true
+  auto_revision: true
+  minimum_release_consistency: 0.74
+  consistency_weight: 0.60
+  creativity_weight: 0.25
+  world_model_weight: 0.15
+  max_summary_memory: 6

@@ -1,0 +1,22 @@
+id: science_fiction-lyrical_tense-rivalry
+title: Signal Haunted Black Box
+genre: science fiction suspense
+tone: lyrical and tense
+premise: A signal cartographer enters a quiet rivalry over a contested black box in
+  the orbital clinic, only to learn both sides are being steered toward the same trap.
+themes:
+- systems
+- survival
+- responsibility
+- grief
+characters:
+- Narin
+- Dowan
+- Mira
+constraints:
+- no omnipotent AI
+- no instant travel
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

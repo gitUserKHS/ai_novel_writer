@@ -1,0 +1,22 @@
+id: thriller-lyrical_tense-coverup
+title: Pressure Rain-Streaked Payment Sheet
+genre: urban thriller
+tone: lyrical and tense
+premise: When a routine handoff in the warehouse district fails, a forensic accountant
+  realizes the official story around a payment sheet was engineered to redirect blame.
+themes:
+- pressure
+- trust
+- exposure
+- grief
+characters:
+- Yujin
+- Taesu
+- Jihye
+constraints:
+- no superpowers
+- no invincible protagonist
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko

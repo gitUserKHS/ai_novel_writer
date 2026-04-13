@@ -1,0 +1,22 @@
+id: thriller-warm_melancholic-rivalry
+title: Pressure Careworn Elevator Key
+genre: urban thriller
+tone: warm but melancholic
+premise: A fixer enters a quiet rivalry over a contested elevator key in the warehouse
+  district, only to learn both sides are being steered toward the same trap.
+themes:
+- pressure
+- trust
+- exposure
+- care
+characters:
+- Hajin
+- Boram
+- Taemin
+constraints:
+- no superpowers
+- no invincible protagonist
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

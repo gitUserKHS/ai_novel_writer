@@ -1,0 +1,22 @@
+id: science_fiction-warm_melancholic-rivalry
+title: Signal Tender Black Box
+genre: science fiction suspense
+tone: warm but melancholic
+premise: A systems diver enters a quiet rivalry over a contested black box in the
+  tidal city, only to learn both sides are being steered toward the same trap.
+themes:
+- systems
+- survival
+- responsibility
+- care
+characters:
+- Hajin
+- Boram
+- Taemin
+constraints:
+- no omnipotent AI
+- no instant travel
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

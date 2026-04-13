@@ -1,0 +1,22 @@
+id: mystery-warm_melancholic-search
+title: Hidden Tender Ledger
+genre: mystery drama
+tone: warm but melancholic
+premise: A stage manager finds the first trace of a vanished ledger in the winter
+  port, and the discovery points back to a decision nobody wants reopened.
+themes:
+- memory
+- evidence
+- choice
+- care
+characters:
+- Robin
+- Sua
+- Joon
+constraints:
+- no magic
+- no time travel
+- keep the conflict centered on search
+target_scene_count: 5
+target_word_count: 7500
+language: ko

@@ -1,0 +1,22 @@
+id: contemporary-lyrical_tense-search
+title: Quiet Breath-Held Recipe Notebook
+genre: contemporary emotional drama
+tone: lyrical and tense
+premise: A social worker finds the first trace of a vanished recipe notebook in the
+  group home, and the discovery points back to a decision nobody wants reopened.
+themes:
+- repair
+- belonging
+- silence
+- grief
+characters:
+- Seorin
+- Minjae
+- Haeun
+constraints:
+- no supernatural twist
+- keep the stakes human-scale
+- keep the conflict centered on search
+target_scene_count: 5
+target_word_count: 7500
+language: ko

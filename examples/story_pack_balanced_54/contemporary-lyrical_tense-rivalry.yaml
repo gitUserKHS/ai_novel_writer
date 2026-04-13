@@ -1,0 +1,22 @@
+id: contemporary-lyrical_tense-rivalry
+title: Quiet Rain-Streaked Library Card
+genre: contemporary emotional drama
+tone: lyrical and tense
+premise: A assistant baker enters a quiet rivalry over a contested library card in
+  the night bakery, only to learn both sides are being steered toward the same trap.
+themes:
+- repair
+- belonging
+- silence
+- grief
+characters:
+- Narin
+- Dowan
+- Mira
+constraints:
+- no supernatural twist
+- keep the stakes human-scale
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CoNarrative AutoNovel Studio</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">CoNarrative</p>
+        <h1>CoNarrative AutoNovel Studio</h1>
+        <p class="hero-text">
+          장면 단위 생성, 메모리 추적, critic 검증, revision, training bundle export까지
+          한 화면에서 다루는 소설 창작 워크벤치.
+        </p>
+        <div class="hero-badges">
+          <span class="status-pill" id="health-pill">health · checking</span>
+          <span class="status-pill" id="runtime-pill">runtime · loading</span>
+          <span class="status-pill neutral" id="story-count-pill">stories · 0</span>
+        </div>
+      </div>
+      <div class="hero-guide card glass">
+        <div class="card-header">
+          <div>
+            <p class="section-kicker">Quick Start</p>
+            <h2>처음 쓰는 순서</h2>
+          </div>
+        </div>
+        <ol class="guide-list">
+          <li>샘플 스토리를 채우거나 직접 premise를 입력합니다.</li>
+          <li>runtime preset을 선택하고 연결 테스트를 누릅니다.</li>
+          <li>outline 생성 후 scene 1개 또는 auto novel을 실행합니다.</li>
+        </ol>
+        <div class="quick-preset-grid">
+          <button type="button" class="ghost-button" data-story-template="moon-theater">달빛 극장 채우기</button>
+          <button type="button" class="ghost-button" data-story-template="glass-harbor">유리 항만 채우기</button>
+          <button type="button" class="ghost-button" data-runtime-preset="mock">Mock preset</button>
+          <button type="button" class="ghost-button" data-runtime-preset="qwen-local">Qwen local preset</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="workspace-grid">
+      <aside class="rail">
+        <section class="card accent-card">
+          <div class="card-header">
+            <div>
+              <p class="section-kicker">Launchpad</p>
+              <h2>새 스토리 만들기</h2>
+            </div>
+          </div>
+          <div class="template-strip" id="story-template-strip">
+            <button type="button" class="template-chip" data-story-template="moon-theater">달빛 극장</button>
+            <button type="button" class="template-chip" data-story-template="glass-harbor">유리 항만</button>
+            <button type="button" class="template-chip" data-story-template="red-archive">붉은 기록 보관소</button>
+          </div>
+          <form id="create-story-form" class="stack form-stack">
+            <label class="field">
+              <span>제목</span>
+              <input name="title" placeholder="예: 달빛 극장" required />
+            </label>
+            <div class="two-col">
+              <label class="field">
+                <span>장르</span>
+                <input name="genre" placeholder="mystery fantasy" />
+              </label>
+              <label class="field">
+                <span>톤</span>
+                <input name="tone" placeholder="lyrical and tense" />
+              </label>
+            </div>
+            <label class="field">
+              <span>Premise</span>
+              <textarea name="premise" rows="5" placeholder="이 작품에서 무슨 일이 벌어지는지 한 단락으로 적습니다."></textarea>
+            </label>
+            <div class="two-col">
+              <label class="field">
+                <span>테마</span>
+                <textarea name="themes" rows="4" placeholder="한 줄에 하나씩"></textarea>
+              </label>
+              <label class="field">
+                <span>주요 인물</span>
+                <textarea name="characters" rows="4" placeholder="한 줄에 하나씩"></textarea>
+              </label>
+            </div>
+            <label class="field">
+              <span>제약</span>
+              <textarea name="constraints" rows="3" placeholder="금지 규칙, 설정 규칙, 반드시 지킬 톤"></textarea>
+            </label>
+            <div class="two-col">
+              <label class="field">
+                <span>Target scenes</span>
+                <input name="target_scene_count" type="number" value="6" min="1" />
+              </label>
+              <label class="field">
+                <span>Target words</span>
+                <input name="target_word_count" type="number" value="8000" min="500" />
+              </label>
+            </div>
+            <button type="submit" class="primary-button">스토리 생성</button>
+          </form>
+        </section>
+
+        <section class="card rail-card">
+          <div class="card-header">
+            <div>
+              <p class="section-kicker">Library</p>
+              <h2>스토리 목록</h2>
+            </div>
+            <button type="button" class="ghost-button compact" id="refresh-story-list-btn">새로고침</button>
+          </div>
+          <div id="story-list" class="story-list"></div>
+        </section>
+      </aside>
+
+      <main class="main-column">
+        <section class="card stage-card">
+          <div class="card-header spread">
+            <div>
+              <p class="section-kicker">Story Deck</p>
+              <h2 id="story-title">스토리를 선택하세요</h2>
+              <p id="story-meta" class="muted">왼쪽에서 스토리를 고르면 outline, scene, export 흐름이 열립니다.</p>
+            </div>
+            <div class="action-stack">
+              <button type="button" class="ghost-button" id="refresh-story-btn">동기화</button>
+              <button type="button" class="primary-button" id="generate-outline-btn">Outline 생성</button>
+              <button type="button" class="primary-button" id="run-scene-btn">다음 Scene 생성</button>
+              <button type="button" class="primary-button" id="auto-novel-btn">Auto Novel 실행</button>
+            </div>
+          </div>
+
+          <div id="story-stat-grid" class="stat-grid">
+            <article class="stat-card">
+              <span class="stat-label">Scenes</span>
+              <strong class="stat-value">-</strong>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">Consistency</span>
+              <strong class="stat-value">-</strong>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">World Plausibility</span>
+              <strong class="stat-value">-</strong>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">Artifacts</span>
+              <strong class="stat-value">-</strong>
+            </article>
+          </div>
+
+          <div class="tab-row">
+            <button class="tab active" data-tab="overview">Overview</button>
+            <button class="tab" data-tab="scene-studio">Scene Studio</button>
+            <button class="tab" data-tab="memory">Memory</button>
+            <button class="tab" data-tab="artifacts">Artifacts</button>
+            <button class="tab" data-tab="runtime">Runtime</button>
+            <button class="tab" data-tab="automation">Automation</button>
+          </div>
+
+          <div class="tab-panels">
+            <section class="tab-panel active" id="tab-overview">
+              <div class="overview-grid">
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Premise</p>
+                      <h3>작품 개요</h3>
+                    </div>
+                  </div>
+                  <div id="overview-premise" class="long-copy empty-state">스토리를 선택하면 premise와 테마가 보입니다.</div>
+                </section>
+
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Outline</p>
+                      <h3>현재 진행도</h3>
+                    </div>
+                    <label class="inline-field">
+                      <span>Scene count</span>
+                      <input id="outline-scene-count" type="number" value="6" min="1" />
+                    </label>
+                  </div>
+                  <div id="outline-progress-panel" class="stack"></div>
+                </section>
+
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Latest Scenes</p>
+                      <h3>최근 장면</h3>
+                    </div>
+                  </div>
+                  <div id="recent-scenes-panel" class="stack"></div>
+                </section>
+
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Workflow</p>
+                      <h3>Export와 검증</h3>
+                    </div>
+                  </div>
+                  <div class="workflow-actions">
+                    <button type="button" class="ghost-button" id="export-btn">원고 Export</button>
+                    <button type="button" class="ghost-button" id="evaluate-btn">평가 생성</button>
+                    <button type="button" class="ghost-button" id="bundle-btn">Training Bundle</button>
+                  </div>
+                  <pre id="dataset-panel" class="code-panel compact"></pre>
+                </section>
+              </div>
+            </section>
+
+            <section class="tab-panel" id="tab-scene-studio">
+              <div class="studio-grid">
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Scenes</p>
+                      <h3>장면 목록</h3>
+                    </div>
+                  </div>
+                  <div id="scene-list" class="stack"></div>
+                </section>
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Inspector</p>
+                      <h3>장면 상세</h3>
+                    </div>
+                  </div>
+                  <div id="scene-detail-shell" class="scene-detail-shell">
+                    <div id="scene-detail-summary" class="scene-reading empty-state">장면을 선택하면 원문, critic 점수, 후보 비교가 보입니다.</div>
+                    <div id="scene-candidates" class="stack"></div>
+                    <pre id="scene-detail" class="code-panel"></pre>
+                  </div>
+                </section>
+              </div>
+            </section>
+
+            <section class="tab-panel" id="tab-memory">
+              <div class="memory-grid">
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Bible</p>
+                      <h3>정적 설정</h3>
+                    </div>
+                  </div>
+                  <form id="bible-form" class="stack form-stack">
+                    <label class="field">
+                      <span>Static facts</span>
+                      <textarea name="static_facts" rows="6" placeholder="한 줄에 하나씩"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Rules</span>
+                      <textarea name="rules" rows="4" placeholder="세계관 규칙"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Forbidden</span>
+                      <textarea name="forbidden" rows="4" placeholder="금지되는 전개"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Motifs</span>
+                      <textarea name="motifs" rows="3" placeholder="반복될 이미지나 상징"></textarea>
+                    </label>
+                    <button type="submit" class="primary-button">Bible 저장</button>
+                  </form>
+                </section>
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">State</p>
+                      <h3>동적 상태와 KG</h3>
+                    </div>
+                  </div>
+                  <div class="stack">
+                    <pre id="state-panel" class="code-panel"></pre>
+                    <pre id="kg-panel" class="code-panel"></pre>
+                  </div>
+                </section>
+              </div>
+            </section>
+
+            <section class="tab-panel" id="tab-artifacts">
+              <div class="artifact-grid">
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Artifacts</p>
+                      <h3>내보낸 파일</h3>
+                    </div>
+                  </div>
+                  <div id="artifact-list" class="stack"></div>
+                </section>
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Jobs</p>
+                      <h3>실행 상태</h3>
+                    </div>
+                  </div>
+                  <div id="job-list" class="stack"></div>
+                </section>
+              </div>
+            </section>
+
+            <section class="tab-panel" id="tab-runtime">
+              <div class="runtime-grid">
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Runtime</p>
+                      <h3>모델 연결 설정</h3>
+                    </div>
+                  </div>
+                  <div class="template-strip">
+                    <button type="button" class="template-chip" data-runtime-preset="mock">Mock</button>
+                    <button type="button" class="template-chip" data-runtime-preset="qwen-native">Qwen Native</button>
+                    <button type="button" class="template-chip" data-runtime-preset="qwen-local">Qwen Local Critic</button>
+                    <button type="button" class="template-chip" data-runtime-preset="qwen-strict">Qwen Strict</button>
+                  </div>
+                  <form id="runtime-form" class="stack form-stack">
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Provider</span>
+                        <select name="provider">
+                          <option value="mock">mock</option>
+                          <option value="openai_compatible">openai_compatible</option>
+                          <option value="ollama">ollama</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Model</span>
+                        <input name="model" placeholder="qwen3:4b" />
+                      </label>
+                    </div>
+                    <label class="field">
+                      <span>Base URL</span>
+                      <input name="base_url" placeholder="http://127.0.0.1:11434" />
+                    </label>
+                    <label class="field">
+                      <span>API key</span>
+                      <input name="api_key" placeholder="ollama or key" />
+                    </label>
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Temperature</span>
+                        <input name="temperature" type="number" step="0.05" min="0" max="2" />
+                      </label>
+                      <label class="field">
+                        <span>Critic temp</span>
+                        <input name="critic_temperature" type="number" step="0.05" min="0" max="2" />
+                      </label>
+                      <label class="field">
+                        <span>Max tokens</span>
+                        <input name="max_tokens" type="number" min="128" />
+                      </label>
+                    </div>
+                    <label class="field checkbox-field">
+                      <input name="cache_responses" type="checkbox" />
+                      <span>응답 캐시 사용</span>
+                    </label>
+                    <label class="field">
+                      <span>Role models JSON</span>
+                      <textarea name="role_models_json" rows="8" placeholder='{"writer":"qwen3:4b","consistency_critic":"outputs/training_qwen3_4b_critic_consistency"}'></textarea>
+                    </label>
+                    <div class="action-stack horizontal">
+                      <button type="submit" class="primary-button">Runtime 저장</button>
+                      <button type="button" class="ghost-button" id="test-runtime-btn">연결 테스트</button>
+                    </div>
+                  </form>
+                </section>
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Runtime Result</p>
+                      <h3>응답과 로그</h3>
+                    </div>
+                  </div>
+                  <pre id="runtime-result" class="code-panel"></pre>
+                </section>
+              </div>
+            </section>
+
+            <section class="tab-panel" id="tab-automation">
+              <div class="automation-grid">
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">One Click</p>
+                      <h3>단일 스토리 실행</h3>
+                    </div>
+                  </div>
+                  <form id="one-click-form" class="stack form-stack">
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Preset</span>
+                        <select name="preset">
+                          <option value="mock">mock</option>
+                          <option value="qwen-native">qwen-native</option>
+                          <option value="qwen-local-critic-world">qwen-local-critic-world</option>
+                          <option value="qwen-local-critic-world-strict">qwen-local-critic-world-strict</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Mode</span>
+                        <select name="mode">
+                          <option value="smoke">smoke</option>
+                          <option value="full">full</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Story file</span>
+                        <input name="story_file" value="examples/story.yaml" />
+                      </label>
+                      <label class="field">
+                        <span>Scene file</span>
+                        <input name="scene_file" value="examples/scene_smoke.yaml" />
+                      </label>
+                    </div>
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Train action</span>
+                        <select name="train_action">
+                          <option value="skip">skip</option>
+                          <option value="dry-run">dry-run</option>
+                          <option value="run">run</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Train preset</span>
+                        <select name="train_preset">
+                          <option value="none">none</option>
+                          <option value="qwen-sft-smoke">qwen-sft-smoke</option>
+                          <option value="qwen-sft">qwen-sft</option>
+                          <option value="qwen-sft-dpo-distill">qwen-sft-dpo-distill</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Scene limit</span>
+                        <input name="scene_limit" type="number" min="0" value="0" />
+                      </label>
+                    </div>
+                    <label class="field checkbox-field">
+                      <input name="run_tests" type="checkbox" />
+                      <span>실행 전 테스트 포함</span>
+                    </label>
+                    <button type="submit" class="primary-button">One-click 실행</button>
+                  </form>
+                </section>
+
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Generalist</p>
+                      <h3>다중 스토리 배치 실행</h3>
+                    </div>
+                  </div>
+                  <form id="generalist-form" class="stack form-stack">
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Preset</span>
+                        <select name="preset">
+                          <option value="mock">mock</option>
+                          <option value="qwen-loop">qwen-loop</option>
+                          <option value="qwen-loop-local-critic-world">qwen-loop-local-critic-world</option>
+                          <option value="qwen-loop-local-critic-world-strict">qwen-loop-local-critic-world-strict</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Mode</span>
+                        <select name="mode">
+                          <option value="smoke">smoke</option>
+                          <option value="full">full</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label class="field">
+                      <span>Story dir</span>
+                      <input name="story_dir" value="examples/story_pack" />
+                    </label>
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Story offset</span>
+                        <input name="story_offset" type="number" min="0" value="0" />
+                      </label>
+                      <label class="field">
+                        <span>Story limit</span>
+                        <input name="story_limit" type="number" min="0" value="0" />
+                      </label>
+                      <label class="field">
+                        <span>Scene limit</span>
+                        <input name="scene_limit" type="number" min="0" value="0" />
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Train action</span>
+                        <select name="train_action">
+                          <option value="skip">skip</option>
+                          <option value="dry-run">dry-run</option>
+                          <option value="run">run</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Train preset</span>
+                        <select name="train_preset">
+                          <option value="none">none</option>
+                          <option value="qwen-sft-dpo-distill">qwen-sft-dpo-distill</option>
+                          <option value="qwen-sft-dpo-distill-critic-world">qwen-sft-dpo-distill-critic-world</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label class="field checkbox-field">
+                      <input name="resume" type="checkbox" checked />
+                      <span>기존 실행 재개</span>
+                    </label>
+                    <button type="submit" class="primary-button">Generalist 실행</button>
+                  </form>
+                </section>
+
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Training</p>
+                      <h3>학습 작업 실행</h3>
+                    </div>
+                  </div>
+                  <form id="training-form" class="stack form-stack">
+                    <label class="field">
+                      <span>Config</span>
+                      <input name="config" value="configs/training_qwen3_4b_sft_smoke.yaml" />
+                    </label>
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Train file</span>
+                        <input name="train_file" value="" placeholder="outputs/generalist_corpus/writer_sft_train.jsonl" />
+                      </label>
+                      <label class="field">
+                        <span>Eval file</span>
+                        <input name="eval_file" value="" placeholder="outputs/generalist_corpus/writer_sft_eval.jsonl" />
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Output dir</span>
+                        <input name="output_dir" value="" placeholder="outputs/gui_training_run" />
+                      </label>
+                      <label class="field">
+                        <span>Model name or path</span>
+                        <input name="model_name_or_path" value="" placeholder="Qwen/Qwen3-4B 또는 outputs/training_qwen3_4b_sft" />
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field checkbox-field">
+                        <input name="dry_run" type="checkbox" checked />
+                        <span>dry-run</span>
+                      </label>
+                      <label class="field checkbox-field">
+                        <input name="print_config" type="checkbox" />
+                        <span>print-config</span>
+                      </label>
+                    </div>
+                    <button type="submit" class="primary-button">Training 실행</button>
+                  </form>
+                </section>
+
+                <section class="subcard">
+                  <div class="card-header">
+                    <div>
+                      <p class="section-kicker">Automation Jobs</p>
+                      <h3>전체 실행 상태</h3>
+                    </div>
+                  </div>
+                  <div id="system-job-list" class="stack"></div>
+                </section>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="card log-card">
+          <div class="card-header">
+            <div>
+              <p class="section-kicker">Activity</p>
+              <h2>작업 로그</h2>
+            </div>
+            <button type="button" class="ghost-button compact" id="clear-log-btn">비우기</button>
+          </div>
+          <div id="log-panel" class="log-panel"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

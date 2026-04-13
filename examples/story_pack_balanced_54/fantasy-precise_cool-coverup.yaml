@@ -1,0 +1,22 @@
+id: fantasy-precise_cool-coverup
+title: Oath Clinical Votive Bell
+genre: low fantasy intrigue
+tone: precise and cool-headed
+premise: When a routine handoff in the mountain court fails, a temple scribe realizes
+  the official story around a votive bell was engineered to redirect blame.
+themes:
+- oath
+- debt
+- kinship
+- control
+characters:
+- Sion
+- Ara
+- Hyobin
+constraints:
+- magic has a cost
+- no resurrection
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko

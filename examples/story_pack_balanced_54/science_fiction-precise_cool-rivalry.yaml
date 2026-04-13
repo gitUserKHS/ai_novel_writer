@@ -1,0 +1,23 @@
+id: science_fiction-precise_cool-rivalry
+title: Signal Clinical Black Box
+genre: science fiction suspense
+tone: precise and cool-headed
+premise: A maintenance analyst enters a quiet rivalry over a contested black box in
+  the climate station, only to learn both sides are being steered toward the same
+  trap.
+themes:
+- systems
+- survival
+- responsibility
+- control
+characters:
+- Dajung
+- Iseul
+- Kyungmin
+constraints:
+- no omnipotent AI
+- no instant travel
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

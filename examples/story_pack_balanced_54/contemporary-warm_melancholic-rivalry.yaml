@@ -1,0 +1,22 @@
+id: contemporary-warm_melancholic-rivalry
+title: Quiet Late-Autumn Library Card
+genre: contemporary emotional drama
+tone: warm but melancholic
+premise: A social worker enters a quiet rivalry over a contested library card in the
+  regional campus, only to learn both sides are being steered toward the same trap.
+themes:
+- repair
+- belonging
+- silence
+- care
+characters:
+- Hajin
+- Boram
+- Taemin
+constraints:
+- no supernatural twist
+- keep the stakes human-scale
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

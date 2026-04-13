@@ -1,0 +1,22 @@
+id: historical-precise_cool-rivalry
+title: Ledger Clinical Proof Sheet
+genre: historical drama
+tone: precise and cool-headed
+premise: A apprentice doctor enters a quiet rivalry over a contested proof sheet in
+  the printing house, only to learn both sides are being steered toward the same trap.
+themes:
+- record
+- class
+- duty
+- control
+characters:
+- Dajung
+- Iseul
+- Kyungmin
+constraints:
+- period-accurate technology only
+- no prophecy shortcuts
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

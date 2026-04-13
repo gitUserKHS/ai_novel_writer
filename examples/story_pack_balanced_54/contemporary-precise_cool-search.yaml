@@ -1,0 +1,22 @@
+id: contemporary-precise_cool-search
+title: Quiet Steel-Lit Recipe Notebook
+genre: contemporary emotional drama
+tone: precise and cool-headed
+premise: A assistant baker finds the first trace of a vanished recipe notebook in
+  the regional campus, and the discovery points back to a decision nobody wants reopened.
+themes:
+- repair
+- belonging
+- silence
+- control
+characters:
+- Eunsol
+- Junseo
+- Haemin
+constraints:
+- no supernatural twist
+- keep the stakes human-scale
+- keep the conflict centered on search
+target_scene_count: 5
+target_word_count: 7500
+language: ko

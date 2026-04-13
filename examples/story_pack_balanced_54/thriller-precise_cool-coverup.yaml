@@ -1,0 +1,22 @@
+id: thriller-precise_cool-coverup
+title: Pressure Measured Payment Sheet
+genre: urban thriller
+tone: precise and cool-headed
+premise: When a routine handoff in the election office fails, a fixer realizes the
+  official story around a payment sheet was engineered to redirect blame.
+themes:
+- pressure
+- trust
+- exposure
+- control
+characters:
+- Sion
+- Ara
+- Hyobin
+constraints:
+- no superpowers
+- no invincible protagonist
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko

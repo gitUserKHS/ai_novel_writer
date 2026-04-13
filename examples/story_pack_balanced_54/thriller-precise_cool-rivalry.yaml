@@ -1,0 +1,23 @@
+id: thriller-precise_cool-rivalry
+title: Pressure Steel-Lit Elevator Key
+genre: urban thriller
+tone: precise and cool-headed
+premise: A forensic accountant enters a quiet rivalry over a contested elevator key
+  in the subway interchange, only to learn both sides are being steered toward the
+  same trap.
+themes:
+- pressure
+- trust
+- exposure
+- control
+characters:
+- Dajung
+- Iseul
+- Kyungmin
+constraints:
+- no superpowers
+- no invincible protagonist
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

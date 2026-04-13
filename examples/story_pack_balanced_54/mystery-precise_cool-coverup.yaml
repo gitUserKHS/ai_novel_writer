@@ -1,0 +1,22 @@
+id: mystery-precise_cool-coverup
+title: Hidden Measured Ticket Stub
+genre: mystery drama
+tone: precise and cool-headed
+premise: When a routine handoff in the winter port fails, a archivist realizes the
+  official story around a ticket stub was engineered to redirect blame.
+themes:
+- memory
+- evidence
+- choice
+- control
+characters:
+- Sion
+- Ara
+- Hyobin
+constraints:
+- no magic
+- no time travel
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko

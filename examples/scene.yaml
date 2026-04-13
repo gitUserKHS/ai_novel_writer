@@ -1,0 +1,11 @@
+
+title_hint: 분장실의 숨은 서랍
+pov: 서윤
+location: 분장실
+time_label: D1 22:00
+goal: 동생의 단서를 찾는다
+beat: 오래 숨겨진 흔적을 확인한다
+foreshadowing:
+  - 누군가가 미리 서랍을 열어본 흔적
+required_facts:
+  - 동생이 마지막으로 남긴 표식은 은색 실이었다

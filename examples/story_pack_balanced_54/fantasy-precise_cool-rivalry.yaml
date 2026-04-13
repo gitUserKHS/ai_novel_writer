@@ -1,0 +1,22 @@
+id: fantasy-precise_cool-rivalry
+title: Oath Measured Ink Seal
+genre: low fantasy intrigue
+tone: precise and cool-headed
+premise: A courier enters a quiet rivalry over a contested ink seal in the river shrine,
+  only to learn both sides are being steered toward the same trap.
+themes:
+- oath
+- debt
+- kinship
+- control
+characters:
+- Dajung
+- Iseul
+- Kyungmin
+constraints:
+- magic has a cost
+- no resurrection
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

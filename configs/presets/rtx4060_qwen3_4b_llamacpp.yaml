@@ -1,0 +1,36 @@
+
+# RTX 4060 8GB 권장 시작점
+app_name: CoNarrative AutoNovel Studio
+workspace:
+  root: workspace
+  database_path: workspace/conarrative.db
+  exports_dir: workspace/exports
+  runtime_settings_path: workspace/runtime_settings.json
+backend:
+  provider: openai_compatible
+  base_url: http://127.0.0.1:8080/v1
+  api_key: not-needed
+  model: qwen3-4b-q4km
+  timeout_seconds: 120
+  temperature: 0.85
+  critic_temperature: 0.15
+  max_tokens: 1600
+  extra_headers: {}
+  role_models:
+    planner: qwen3-4b-q4km
+    writer: qwen3-4b-q4km
+    consistency_critic: qwen3-4b-q4km
+    creativity_critic: qwen3-4b-q4km
+    revision: qwen3-4b-q4km
+    extractor: qwen3-4b-q4km
+  cache_responses: true
+  cache_dir: workspace/cache
+orchestration:
+  recent_scene_memory: 3
+  adaptive_outline: true
+  auto_revision: true
+  minimum_release_consistency: 0.74
+  consistency_weight: 0.60
+  creativity_weight: 0.25
+  world_model_weight: 0.15
+  max_summary_memory: 6

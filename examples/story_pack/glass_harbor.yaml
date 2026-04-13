@@ -1,0 +1,19 @@
+id: glass-harbor
+title: 유리 항만
+genre: SF 누아르
+tone: 차갑고 건조한 긴장
+premise: 기후 통제 돔 아래의 항만 도시에서 잠수 조사원 하린은 바다 밑 검열 기록을 훔친 사람을 쫓는다.
+themes:
+  - 감시
+  - 신뢰
+  - 생존
+characters:
+  - 하린
+  - 준
+  - 마테오
+constraints:
+  - 초능력 없음
+  - 시간 역행 없음
+target_scene_count: 6
+target_word_count: 9000
+language: ko

@@ -1,0 +1,22 @@
+id: contemporary-precise_cool-coverup
+title: Quiet Clinical Voice Memo
+genre: contemporary emotional drama
+tone: precise and cool-headed
+premise: When a routine handoff in the night bakery fails, a social worker realizes
+  the official story around a voice memo was engineered to redirect blame.
+themes:
+- repair
+- belonging
+- silence
+- control
+characters:
+- Sion
+- Ara
+- Hyobin
+constraints:
+- no supernatural twist
+- keep the stakes human-scale
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko

@@ -1,0 +1,16 @@
+mode: sft
+pool_key: critic_consistency_sft
+chain_from_previous: false
+model_name_or_path: Qwen/Qwen3-4B
+train_file: configs/workspace_quickstart_mock/exports/moon-theater/training/moon-theater_critic_consistency_sft.jsonl
+output_dir: outputs/training_qwen3_4b_critic_consistency
+load_in_4bit: true
+lora_r: 32
+lora_alpha: 64
+lora_dropout: 0.05
+learning_rate: 0.0001
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+num_train_epochs: 1
+max_seq_length: 2048
+gradient_checkpointing: true

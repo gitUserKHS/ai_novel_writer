@@ -1,0 +1,22 @@
+id: science_fiction-warm_melancholic-search
+title: Signal Late-Autumn Salt Map
+genre: science fiction suspense
+tone: warm but melancholic
+premise: A maintenance analyst finds the first trace of a vanished salt map in the
+  orbital clinic, and the discovery points back to a decision nobody wants reopened.
+themes:
+- systems
+- survival
+- responsibility
+- care
+characters:
+- Robin
+- Sua
+- Joon
+constraints:
+- no omnipotent AI
+- no instant travel
+- keep the conflict centered on search
+target_scene_count: 5
+target_word_count: 7500
+language: ko

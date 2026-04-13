@@ -1,0 +1,39 @@
+app_name: CoNarrative AutoNovel Studio
+workspace:
+  root: workspace_ollama_native_qwen3_4b_pairwise_local_critic
+  database_path: workspace_ollama_native_qwen3_4b_pairwise_local_critic/conarrative.db
+  exports_dir: workspace_ollama_native_qwen3_4b_pairwise_local_critic/exports
+  runtime_settings_path: workspace_ollama_native_qwen3_4b_pairwise_local_critic/runtime_settings.json
+backend:
+  provider: ollama
+  base_url: http://127.0.0.1:11434
+  api_key: ollama
+  model: qwen3:4b
+  think: false
+  timeout_seconds: 600
+  temperature: 0.7
+  critic_temperature: 0.0
+  max_tokens: 1200
+  use_response_format: false
+  extra_headers: {}
+  role_models:
+    planner: qwen3:4b
+    writer: qwen3:4b
+    consistency_critic: outputs/training_qwen3_4b_critic_consistency
+    creativity_critic: qwen3:4b
+    revision: qwen3:4b
+    extractor: qwen3:4b
+  cache_responses: true
+  cache_dir: workspace_ollama_native_qwen3_4b_pairwise_local_critic/cache
+orchestration:
+  recent_scene_memory: 3
+  candidate_count: 2
+  scene_min_words: 140
+  scene_max_words: 220
+  adaptive_outline: true
+  auto_revision: true
+  minimum_release_consistency: 0.74
+  consistency_weight: 0.60
+  creativity_weight: 0.25
+  world_model_weight: 0.15
+  max_summary_memory: 6

@@ -1,0 +1,22 @@
+id: mystery-warm_melancholic-rivalry
+title: Hidden Careworn Missing Reel
+genre: mystery drama
+tone: warm but melancholic
+premise: A archivist enters a quiet rivalry over a contested missing reel in the municipal
+  archive, only to learn both sides are being steered toward the same trap.
+themes:
+- memory
+- evidence
+- choice
+- care
+characters:
+- Hajin
+- Boram
+- Taemin
+constraints:
+- no magic
+- no time travel
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

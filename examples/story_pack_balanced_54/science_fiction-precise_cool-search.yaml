@@ -1,0 +1,22 @@
+id: science_fiction-precise_cool-search
+title: Signal Measured Salt Map
+genre: science fiction suspense
+tone: precise and cool-headed
+premise: A signal cartographer finds the first trace of a vanished salt map in the
+  tidal city, and the discovery points back to a decision nobody wants reopened.
+themes:
+- systems
+- survival
+- responsibility
+- control
+characters:
+- Eunsol
+- Junseo
+- Haemin
+constraints:
+- no omnipotent AI
+- no instant travel
+- keep the conflict centered on search
+target_scene_count: 5
+target_word_count: 7500
+language: ko

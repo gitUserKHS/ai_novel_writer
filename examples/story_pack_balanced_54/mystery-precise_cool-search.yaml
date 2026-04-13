@@ -1,0 +1,22 @@
+id: mystery-precise_cool-search
+title: Hidden Clinical Ledger
+genre: mystery drama
+tone: precise and cool-headed
+premise: A night reporter finds the first trace of a vanished ledger in the municipal
+  archive, and the discovery points back to a decision nobody wants reopened.
+themes:
+- memory
+- evidence
+- choice
+- control
+characters:
+- Eunsol
+- Junseo
+- Haemin
+constraints:
+- no magic
+- no time travel
+- keep the conflict centered on search
+target_scene_count: 5
+target_word_count: 7500
+language: ko

@@ -1,0 +1,22 @@
+id: historical-precise_cool-search
+title: Ledger Measured Sealed Crate
+genre: historical drama
+tone: precise and cool-headed
+premise: A ledger clerk finds the first trace of a vanished sealed crate in the frontier
+  clinic, and the discovery points back to a decision nobody wants reopened.
+themes:
+- record
+- class
+- duty
+- control
+characters:
+- Eunsol
+- Junseo
+- Haemin
+constraints:
+- period-accurate technology only
+- no prophecy shortcuts
+- keep the conflict centered on search
+target_scene_count: 5
+target_word_count: 7500
+language: ko

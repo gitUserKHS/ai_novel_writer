@@ -1,0 +1,22 @@
+id: contemporary-warm_melancholic-coverup
+title: Quiet Tender Voice Memo
+genre: contemporary emotional drama
+tone: warm but melancholic
+premise: When a routine handoff in the group home fails, a assistant baker realizes
+  the official story around a voice memo was engineered to redirect blame.
+themes:
+- repair
+- belonging
+- silence
+- care
+characters:
+- Yeonwoo
+- Minki
+- Sera
+constraints:
+- no supernatural twist
+- keep the stakes human-scale
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko

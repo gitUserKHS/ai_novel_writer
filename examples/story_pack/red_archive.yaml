@@ -1,0 +1,19 @@
+id: red-archive
+title: 적색 서고
+genre: 역사 미스터리
+tone: 고요하지만 압박감 있음
+premise: 전란 직후의 왕실 서고에서 필사관 다온은 불타지 않은 금서의 진짜 주인을 찾아야 한다.
+themes:
+  - 권력
+  - 기록
+  - 침묵
+characters:
+  - 다온
+  - 서린
+  - 윤겸
+constraints:
+  - 마법 없음
+  - 현대 기술 없음
+target_scene_count: 6
+target_word_count: 9000
+language: ko

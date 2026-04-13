@@ -1,0 +1,3 @@
+
+recursive-include conarrative/web *
+include README.md

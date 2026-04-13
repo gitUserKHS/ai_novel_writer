@@ -1,0 +1,22 @@
+id: mystery-lyrical_tense-rivalry
+title: Hidden Breath-Held Missing Reel
+genre: mystery drama
+tone: lyrical and tense
+premise: A night reporter enters a quiet rivalry over a contested missing reel in
+  the winter port, only to learn both sides are being steered toward the same trap.
+themes:
+- memory
+- evidence
+- choice
+- grief
+characters:
+- Narin
+- Dowan
+- Mira
+constraints:
+- no magic
+- no time travel
+- keep the conflict centered on rivalry
+target_scene_count: 5
+target_word_count: 7500
+language: ko

@@ -1,0 +1,22 @@
+id: science_fiction-precise_cool-coverup
+title: Signal Steel-Lit Deferred Transmission
+genre: science fiction suspense
+tone: precise and cool-headed
+premise: When a routine handoff in the orbital clinic fails, a systems diver realizes
+  the official story around a deferred transmission was engineered to redirect blame.
+themes:
+- systems
+- survival
+- responsibility
+- control
+characters:
+- Sion
+- Ara
+- Hyobin
+constraints:
+- no omnipotent AI
+- no instant travel
+- keep the conflict centered on coverup
+target_scene_count: 5
+target_word_count: 7500
+language: ko
