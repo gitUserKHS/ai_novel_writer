@@ -17,6 +17,7 @@ from .config import AppConfig
 from .db import Storage
 from .jobs import JobManager
 from .llm import build_provider
+from .hf_release import infer_base_model_slug, next_release_tag, suggest_repo_id
 from .models import (
     BibleContent,
     GeneralistLoopRequest,
@@ -157,22 +158,41 @@ def build_hf_publish_command(payload: HFPublishRequest) -> List[str]:
         "publish",
         "--source-dir",
         str(_resolve_repo_path(payload.source_dir, must_exist=True, allow_directory=True)),
-        "--repo-id",
-        payload.repo_id,
         "--repo-type",
         payload.repo_type,
     ]
+    if payload.repo_id:
+        command += ["--repo-id", payload.repo_id]
+    if payload.namespace:
+        command += ["--namespace", payload.namespace]
+    if payload.project:
+        command += ["--project", payload.project]
+    if payload.role:
+        command += ["--role", payload.role]
+    if payload.base_model:
+        command += ["--base-model", payload.base_model]
+    if payload.stage:
+        command += ["--stage", payload.stage]
     if payload.path_in_repo:
         command += ["--path-in-repo", payload.path_in_repo]
     if payload.revision:
         command += ["--revision", payload.revision]
     if payload.commit_message:
         command += ["--commit-message", payload.commit_message]
+    if payload.release_tag:
+        command += ["--release-tag", payload.release_tag]
+    if payload.release_prefix:
+        command += ["--release-prefix", payload.release_prefix]
+    if payload.bump:
+        command += ["--bump", payload.bump]
+    if payload.tag_message:
+        command += ["--tag-message", payload.tag_message]
     for pattern in payload.ignore_patterns:
         if pattern:
             command += ["--ignore-pattern", pattern]
     _maybe_append_flag(command, payload.private, "--private")
     _maybe_append_flag(command, payload.exclude_checkpoints, "--exclude-checkpoints")
+    _maybe_append_flag(command, payload.auto_tag, "--auto-tag")
     return command
 
 
@@ -273,6 +293,47 @@ def search_hf_hub(repo_type: str, search: str = "", author: str = "", limit: int
         "search": search,
         "author": author,
         "limit": normalized_limit,
+    }
+
+
+def suggest_hf_release(
+    *,
+    namespace: str,
+    repo_type: str = "model",
+    project: str = "conarrative",
+    role: str = "",
+    base_model: str = "",
+    stage: str = "",
+    release_prefix: str = "v",
+) -> Dict[str, Any]:
+    normalized_repo_type = repo_type if repo_type in {"model", "dataset"} else "model"
+    repo_id = suggest_repo_id(
+        namespace,
+        repo_type=normalized_repo_type,
+        project=project,
+        role=role,
+        base_model=base_model,
+        stage=stage,
+    )
+    existing_tags: list[str] = []
+    try:
+        from huggingface_hub import HfApi
+
+        refs = HfApi().list_repo_refs(repo_id=repo_id, repo_type=None if normalized_repo_type == "model" else normalized_repo_type)
+        existing_tags = [str(getattr(tag, "name", "") or "") for tag in getattr(refs, "tags", [])]
+    except Exception:
+        existing_tags = []
+    return {
+        "repo_id": repo_id,
+        "repo_type": normalized_repo_type,
+        "project": project,
+        "role": role,
+        "base_model": base_model,
+        "base_model_slug": infer_base_model_slug(base_model),
+        "stage": stage,
+        "release_prefix": release_prefix,
+        "existing_tags": existing_tags,
+        "suggested_tag": next_release_tag(existing_tags, prefix=release_prefix, bump="patch"),
     }
 
 
@@ -518,6 +579,26 @@ def create_app(config: AppConfig) -> FastAPI:
             return search_hf_hub(repo_type=repo_type, search=search, author=author, limit=limit)
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/api/hf/suggest-release")
+    def hf_suggest_release(
+        namespace: str = Query(...),
+        repo_type: str = Query(default="model"),
+        project: str = Query(default="conarrative"),
+        role: str = Query(default=""),
+        base_model: str = Query(default=""),
+        stage: str = Query(default=""),
+        release_prefix: str = Query(default="v"),
+    ) -> Dict[str, Any]:
+        return suggest_hf_release(
+            namespace=namespace,
+            repo_type=repo_type,
+            project=project,
+            role=role,
+            base_model=base_model,
+            stage=stage,
+            release_prefix=release_prefix,
+        )
 
     @app.post("/api/ui-presets")
     def save_ui_preset(payload: UIPresetSaveRequest) -> Dict[str, Any]:

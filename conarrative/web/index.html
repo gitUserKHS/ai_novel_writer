@@ -650,6 +650,34 @@
                         <input name="repo_id" placeholder="your-org/conarrative-writer-qwen3-4b-lora" />
                       </label>
                     </div>
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Namespace</span>
+                        <input name="namespace" value="" placeholder="your-org" />
+                      </label>
+                      <label class="field">
+                        <span>Project</span>
+                        <input name="project" value="conarrative" />
+                      </label>
+                      <label class="field">
+                        <span>Role</span>
+                        <input name="role" value="writer" placeholder="writer" />
+                      </label>
+                    </div>
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Base model</span>
+                        <input name="base_model" value="Qwen/Qwen3-4B" placeholder="Qwen/Qwen3-4B" />
+                      </label>
+                      <label class="field">
+                        <span>Stage</span>
+                        <input name="stage" value="sft" placeholder="sft" />
+                      </label>
+                      <div class="field">
+                        <span>&nbsp;</span>
+                        <button type="button" class="ghost-button" id="suggest-hf-publish-btn">Suggest Repo Id</button>
+                      </div>
+                    </div>
                     <div class="two-col">
                       <label class="field">
                         <span>Repo type</span>
@@ -673,6 +701,28 @@
                         <input name="commit_message" value="" placeholder="Upload writer adapter" />
                       </label>
                     </div>
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Release tag</span>
+                        <input name="release_tag" value="" placeholder="v0.1.0" />
+                      </label>
+                      <label class="field">
+                        <span>Release prefix</span>
+                        <input name="release_prefix" value="v" />
+                      </label>
+                      <label class="field">
+                        <span>Bump</span>
+                        <select name="bump">
+                          <option value="patch">patch</option>
+                          <option value="minor">minor</option>
+                          <option value="major">major</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label class="field">
+                      <span>Tag message</span>
+                      <input name="tag_message" value="" placeholder="Release writer adapter" />
+                    </label>
                     <div class="two-col">
                       <label class="field checkbox-field">
                         <input name="private" type="checkbox" />
@@ -683,6 +733,10 @@
                         <span>checkpoint ?쒖쇅</span>
                       </label>
                     </div>
+                    <label class="field checkbox-field">
+                      <input name="auto_tag" type="checkbox" checked />
+                      <span>auto release tag</span>
+                    </label>
                     <label class="field">
                       <span>Ignore patterns</span>
                       <textarea name="ignore_patterns" rows="3" placeholder="??以꾩뿉 ?섎굹??"></textarea>

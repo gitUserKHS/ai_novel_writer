@@ -8,6 +8,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from conarrative.hf_release import infer_base_model_slug, next_release_tag, suggest_repo_id
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Publish or pull CoNarrative artifacts to or from Hugging Face Hub.")
@@ -15,7 +21,7 @@ def parse_args() -> argparse.Namespace:
 
     publish = subparsers.add_parser("publish", help="Upload a local folder to Hugging Face Hub.")
     publish.add_argument("--source-dir", required=True)
-    publish.add_argument("--repo-id", required=True)
+    publish.add_argument("--repo-id", required=False)
     publish.add_argument("--repo-type", choices=["model", "dataset"], default="model")
     publish.add_argument("--path-in-repo", default="")
     publish.add_argument("--revision", default=None)
@@ -23,6 +29,16 @@ def parse_args() -> argparse.Namespace:
     publish.add_argument("--private", action="store_true")
     publish.add_argument("--exclude-checkpoints", action="store_true")
     publish.add_argument("--ignore-pattern", action="append", default=[])
+    publish.add_argument("--namespace", default="")
+    publish.add_argument("--project", default="conarrative")
+    publish.add_argument("--role", default="")
+    publish.add_argument("--base-model", default="")
+    publish.add_argument("--stage", default="")
+    publish.add_argument("--auto-tag", action="store_true")
+    publish.add_argument("--release-tag", default=None)
+    publish.add_argument("--release-prefix", default="v")
+    publish.add_argument("--bump", choices=["patch", "minor", "major"], default="patch")
+    publish.add_argument("--tag-message", default=None)
 
     pull = subparsers.add_parser("pull", help="Download a repo snapshot from Hugging Face Hub.")
     pull.add_argument("--repo-id", required=True)
@@ -31,6 +47,15 @@ def parse_args() -> argparse.Namespace:
     pull.add_argument("--revision", default=None)
     pull.add_argument("--allow-pattern", action="append", default=[])
     pull.add_argument("--ignore-pattern", action="append", default=[])
+
+    suggest = subparsers.add_parser("suggest", help="Suggest a standardized Hugging Face repo id and release tag.")
+    suggest.add_argument("--namespace", required=True)
+    suggest.add_argument("--repo-type", choices=["model", "dataset"], default="model")
+    suggest.add_argument("--project", default="conarrative")
+    suggest.add_argument("--role", default="")
+    suggest.add_argument("--base-model", default="")
+    suggest.add_argument("--stage", default="")
+    suggest.add_argument("--release-prefix", default="v")
 
     return parser.parse_args()
 
@@ -166,16 +191,54 @@ def upload_generated_card(api: Any, repo_id: str, repo_type: str, source_dir: Pa
     return str(getattr(commit_info, "commit_url", "") or "generated README.md uploaded")
 
 
+def resolve_repo_id(args: argparse.Namespace, source_dir: Path) -> str:
+    repo_id = str(args.repo_id or "").strip()
+    if repo_id:
+        return repo_id
+    namespace = str(args.namespace or "").strip()
+    if not namespace:
+        raise SystemExit("Either --repo-id or --namespace is required.")
+    base_model = str(args.base_model or "").strip() or (infer_base_model(source_dir) or "")
+    return suggest_repo_id(
+        namespace,
+        repo_type=args.repo_type,
+        project=args.project,
+        role=args.role,
+        base_model=base_model,
+        stage=args.stage,
+    )
+
+
+def maybe_create_release_tag(api: Any, args: argparse.Namespace, repo_id: str) -> dict[str, str]:
+    explicit_tag = str(args.release_tag or "").strip()
+    should_tag = bool(args.auto_tag or explicit_tag)
+    if not should_tag:
+        return {"release_tag": "", "tag_result": "skipped"}
+    refs = api.list_repo_refs(repo_id=repo_id, repo_type=repo_type_arg(args.repo_type))
+    existing_tags = [str(getattr(tag, "name", "") or "") for tag in getattr(refs, "tags", [])]
+    release_tag = explicit_tag or next_release_tag(existing_tags, prefix=args.release_prefix, bump=args.bump)
+    tag_message = args.tag_message or f"Release {release_tag} for {repo_id}"
+    api.create_tag(
+        repo_id=repo_id,
+        repo_type=repo_type_arg(args.repo_type),
+        revision=args.revision or "main",
+        tag=release_tag,
+        tag_message=tag_message,
+    )
+    return {"release_tag": release_tag, "tag_result": "created"}
+
+
 def publish(args: argparse.Namespace) -> None:
     HfApi, _, _, _ = require_hf_hub()
     source_dir = Path(args.source_dir).resolve()
     if not source_dir.exists() or not source_dir.is_dir():
         raise SystemExit(f"Source directory not found: {source_dir}")
 
+    repo_id = resolve_repo_id(args, source_dir)
     api = HfApi(token=os.getenv("HF_TOKEN"))
     repo_type = repo_type_arg(args.repo_type)
     api.create_repo(
-        repo_id=args.repo_id,
+        repo_id=repo_id,
         repo_type=repo_type,
         private=bool(args.private),
         exist_ok=True,
@@ -183,7 +246,7 @@ def publish(args: argparse.Namespace) -> None:
     ignore_patterns = default_ignore_patterns(bool(args.exclude_checkpoints)) + list(args.ignore_pattern or [])
     commit_message = args.commit_message or f"Upload {source_dir.name} from CoNarrative"
     commit_info = api.upload_folder(
-        repo_id=args.repo_id,
+        repo_id=repo_id,
         repo_type=repo_type,
         folder_path=str(source_dir),
         path_in_repo=args.path_in_repo or None,
@@ -191,22 +254,29 @@ def publish(args: argparse.Namespace) -> None:
         commit_message=commit_message,
         ignore_patterns=ignore_patterns or None,
     )
-    card_result = upload_generated_card(api, args.repo_id, args.repo_type, source_dir, args.revision)
+    card_result = upload_generated_card(api, repo_id, args.repo_type, source_dir, args.revision)
+    release = maybe_create_release_tag(api, args, repo_id)
     output = {
         "ok": True,
         "action": "publish",
-        "repo_id": args.repo_id,
+        "repo_id": repo_id,
         "repo_type": args.repo_type,
         "source_dir": str(source_dir),
         "path_in_repo": args.path_in_repo or "",
         "private": bool(args.private),
         "revision": args.revision,
+        "project": args.project,
+        "role": args.role,
+        "base_model": str(args.base_model or "") or (infer_base_model(source_dir) or ""),
+        "base_model_slug": infer_base_model_slug(str(args.base_model or "") or (infer_base_model(source_dir) or "")),
+        "stage": args.stage,
         "exclude_checkpoints": bool(args.exclude_checkpoints),
         "ignored_patterns": ignore_patterns,
         "commit_message": commit_message,
         "commit_url": str(commit_info.commit_url) if getattr(commit_info, "commit_url", None) else "",
         "oid": str(getattr(commit_info, "oid", "") or ""),
         "card_result": card_result,
+        **release,
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
 
@@ -238,6 +308,30 @@ def pull(args: argparse.Namespace) -> None:
     print(json.dumps(output, ensure_ascii=False, indent=2))
 
 
+def suggest(args: argparse.Namespace) -> None:
+    repo_id = suggest_repo_id(
+        args.namespace,
+        repo_type=args.repo_type,
+        project=args.project,
+        role=args.role,
+        base_model=args.base_model,
+        stage=args.stage,
+    )
+    output = {
+        "ok": True,
+        "action": "suggest",
+        "repo_id": repo_id,
+        "repo_type": args.repo_type,
+        "project": args.project,
+        "role": args.role,
+        "base_model": args.base_model,
+        "base_model_slug": infer_base_model_slug(args.base_model),
+        "stage": args.stage,
+        "release_tag": next_release_tag([], prefix=args.release_prefix, bump="patch"),
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+
+
 def main() -> None:
     args = parse_args()
     if args.command == "publish":
@@ -245,6 +339,9 @@ def main() -> None:
         return
     if args.command == "pull":
         pull(args)
+        return
+    if args.command == "suggest":
+        suggest(args)
         return
     raise SystemExit(f"Unsupported command: {args.command}")
 

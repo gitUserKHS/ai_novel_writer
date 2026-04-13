@@ -324,12 +324,22 @@ function fillHFPublishForm(payload) {
   const form = document.getElementById("hf-publish-form");
   form.source_dir.value = payload.source_dir || "outputs/training_qwen3_4b_sft";
   form.repo_id.value = payload.repo_id || "";
+  form.namespace.value = payload.namespace || "";
+  form.project.value = payload.project || "conarrative";
+  form.role.value = payload.role || "";
+  form.base_model.value = payload.base_model || "";
+  form.stage.value = payload.stage || "";
   form.repo_type.value = payload.repo_type || "model";
   form.path_in_repo.value = payload.path_in_repo || "";
   form.revision.value = payload.revision || "";
   form.commit_message.value = payload.commit_message || "";
+  form.release_tag.value = payload.release_tag || "";
+  form.release_prefix.value = payload.release_prefix || "v";
+  form.bump.value = payload.bump || "patch";
+  form.tag_message.value = payload.tag_message || "";
   form.private.checked = !!payload.private;
   form.exclude_checkpoints.checked = payload.exclude_checkpoints !== false;
+  form.auto_tag.checked = payload.auto_tag !== false;
   form.ignore_patterns.value = (payload.ignore_patterns || []).join("\n");
 }
 
@@ -409,12 +419,22 @@ function collectHFPublishPayload(form) {
   return {
     source_dir: form.source_dir.value,
     repo_id: form.repo_id.value,
+    namespace: form.namespace.value || "",
+    project: form.project.value || "conarrative",
+    role: form.role.value || "",
+    base_model: form.base_model.value || "",
+    stage: form.stage.value || "",
     repo_type: form.repo_type.value,
     path_in_repo: form.path_in_repo.value || "",
     revision: form.revision.value || null,
     commit_message: form.commit_message.value || null,
+    release_tag: form.release_tag.value || "",
+    release_prefix: form.release_prefix.value || "v",
+    bump: form.bump.value || "patch",
+    tag_message: form.tag_message.value || "",
     private: !!form.private.checked,
     exclude_checkpoints: !!form.exclude_checkpoints.checked,
+    auto_tag: !!form.auto_tag.checked,
     ignore_patterns: lines(form.ignore_patterns.value),
   };
 }
@@ -428,6 +448,28 @@ function collectHFPullPayload(form) {
     allow_patterns: lines(form.allow_patterns.value),
     ignore_patterns: lines(form.ignore_patterns.value),
   };
+}
+
+function readRuntimeRoleModels() {
+  const textarea = document.getElementById("runtime-form").role_models_json;
+  try {
+    return JSON.parse(textarea.value || "{}");
+  } catch (error) {
+    throw new Error("Runtime role_models JSON 형식이 올바르지 않습니다.");
+  }
+}
+
+function writeRuntimeRoleModels(payload) {
+  const textarea = document.getElementById("runtime-form").role_models_json;
+  textarea.value = JSON.stringify(payload || {}, null, 2);
+}
+
+function bindRuntimeRoleModel(role, repoId) {
+  const roleModels = readRuntimeRoleModels();
+  roleModels[role] = repoId;
+  writeRuntimeRoleModels(roleModels);
+  setSelectedTab("runtime");
+  logLine(`runtime role 연결: ${role} -> ${repoId}`);
 }
 
 function presetOptions(kind) {
@@ -947,6 +989,13 @@ function renderHFBrowserResults(items) {
             <span class="badge">${item.private ? "private" : "public"}</span>
           </div>
           <p class="muted">${escapeHtml((item.tags || []).slice(0, 8).join(", "))}</p>
+          <div class="action-stack horizontal">
+            <button type="button" class="ghost-button compact" data-hf-repo-action="pull" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Use In Pull</button>
+            <button type="button" class="ghost-button compact" data-hf-repo-action="training" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Use In Training</button>
+            ${item.repo_type === "model" ? `<button type="button" class="ghost-button compact" data-hf-bind-role="writer" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Writer</button>` : ""}
+            ${item.repo_type === "model" ? `<button type="button" class="ghost-button compact" data-hf-bind-role="consistency_critic" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">Critic</button>` : ""}
+            ${item.repo_type === "model" ? `<button type="button" class="ghost-button compact" data-hf-bind-role="world_model" data-repo-id="${escapeHtml(item.repo_id)}" data-repo-type="${escapeHtml(item.repo_type)}">World</button>` : ""}
+          </div>
         </div>
       `,
     )
@@ -1289,6 +1338,56 @@ async function browseHFRepos(event) {
   });
 }
 
+async function suggestHFPublishRelease() {
+  await runTask("HF release suggestion", async () => {
+    const form = document.getElementById("hf-publish-form");
+    const query = new URLSearchParams({
+      namespace: form.namespace.value || "",
+      repo_type: form.repo_type.value || "model",
+      project: form.project.value || "conarrative",
+      role: form.role.value || "",
+      base_model: form.base_model.value || "",
+      stage: form.stage.value || "",
+      release_prefix: form.release_prefix.value || "v",
+    });
+    const data = await api(`/api/hf/suggest-release?${query.toString()}`);
+    form.repo_id.value = data.repo_id || form.repo_id.value;
+    form.release_tag.value = data.suggested_tag || form.release_tag.value;
+    if (!form.commit_message.value) {
+      form.commit_message.value = `Upload ${form.role.value || "artifact"} adapter`;
+    }
+    if (!form.tag_message.value) {
+      form.tag_message.value = `Release ${data.suggested_tag || ""} for ${data.repo_id || ""}`.trim();
+    }
+    logLine(`hf release suggestion ready: ${data.repo_id} / ${data.suggested_tag}`);
+  });
+}
+
+function handleHFRepoResultClick(event) {
+  const button = event.target.closest("button");
+  if (!button) {
+    return;
+  }
+  const repoId = button.dataset.repoId;
+  const repoType = button.dataset.repoType || "model";
+  if (!repoId) {
+    return;
+  }
+  if (button.dataset.hfBindRole) {
+    bindRuntimeRoleModel(button.dataset.hfBindRole, repoId);
+    return;
+  }
+  if (button.dataset.hfRepoAction === "pull") {
+    fillHFPullForm({ repo_id: repoId, repo_type: repoType, local_dir: `outputs/hf_download/${basename(repoId)}` });
+    logLine(`hf pull form 채움: ${repoId}`);
+    return;
+  }
+  if (button.dataset.hfRepoAction === "training") {
+    fillTrainingForm({ ...collectTrainingPayload(document.getElementById("training-form")), model_name_or_path: repoId });
+    logLine(`training form 채움: ${repoId}`);
+  }
+}
+
 function bindTabs() {
   document.querySelectorAll(".tab").forEach((button) => {
     button.addEventListener("click", () => setSelectedTab(button.dataset.tab));
@@ -1331,7 +1430,9 @@ function bindHFExtraControls() {
   document.getElementById("save-hf-pull-preset-btn").addEventListener("click", () => runTask("hf pull preset save", () => saveCurrentPreset("hf_pull")));
   document.getElementById("delete-hf-pull-preset-btn").addEventListener("click", () => runTask("hf pull preset delete", () => deleteSavedPreset("hf_pull")));
 
+  document.getElementById("suggest-hf-publish-btn").addEventListener("click", () => suggestHFPublishRelease());
   document.getElementById("hf-browser-form").addEventListener("submit", browseHFRepos);
+  document.getElementById("hf-browser-results").addEventListener("click", handleHFRepoResultClick);
 }
 
 function bindActions() {

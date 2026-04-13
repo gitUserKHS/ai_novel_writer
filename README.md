@@ -206,6 +206,7 @@ This repository can now:
 - publish a local adapter or dataset folder to Hugging Face Hub
 - pull a model or dataset snapshot from Hugging Face Hub into a local directory
 - generate a Hub `README.md` model card automatically when the upload source has no card yet
+- suggest a standardized repo id and next release tag for team-wide naming consistency
 
 Install the extra dependency:
 
@@ -224,9 +225,17 @@ Examples:
 ```powershell
 .\.venv\Scripts\python.exe scripts\publish_to_hf.py publish --source-dir outputs\training_qwen3_4b_critic_consistency --repo-id your-org/conarrative-critic-qwen3-4b-lora --repo-type model --private --exclude-checkpoints
 .\.venv\Scripts\python.exe scripts\publish_to_hf.py pull --repo-id your-org/conarrative-critic-qwen3-4b-lora --repo-type model --local-dir outputs\hf_download\critic
+.\.venv\Scripts\python.exe scripts\publish_to_hf.py suggest --namespace your-org --repo-type model --project conarrative --role writer --base-model Qwen/Qwen3-4B --stage sft
 ```
 
 Once pulled, point `role_models.consistency_critic` at the downloaded directory, or use the Hub repo id directly for adapter repos.
+
+Suggested naming pattern:
+
+- model adapter: `your-org/conarrative-<role>-<base-model>-<stage>-lora`
+- dataset: `your-org/conarrative-<role>-corpus`
+
+Release tags default to semantic tags such as `v0.1.0`, `v0.1.1`, and can be auto-created during publish.
 
 ## Tests
 

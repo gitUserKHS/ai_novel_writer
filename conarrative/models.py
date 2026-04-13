@@ -377,7 +377,7 @@ class TrainingRunRequest(BaseModel):
 
 class HFPublishRequest(BaseModel):
     source_dir: str = "outputs/training_qwen3_4b_sft"
-    repo_id: str
+    repo_id: str = ""
     repo_type: str = "model"
     path_in_repo: str = ""
     revision: Optional[str] = None
@@ -385,6 +385,16 @@ class HFPublishRequest(BaseModel):
     private: bool = False
     exclude_checkpoints: bool = True
     ignore_patterns: List[str] = Field(default_factory=list)
+    namespace: str = ""
+    project: str = "conarrative"
+    role: str = ""
+    base_model: str = ""
+    stage: str = ""
+    auto_tag: bool = False
+    release_tag: str = ""
+    release_prefix: str = "v"
+    bump: str = "patch"
+    tag_message: str = ""
 
 
 class HFPullRequest(BaseModel):

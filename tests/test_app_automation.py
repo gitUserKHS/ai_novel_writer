@@ -11,6 +11,7 @@ from conarrative.app import (
     build_hf_pull_command,
     build_hf_publish_command,
     build_one_click_command,
+    suggest_hf_release,
     search_hf_hub,
     build_training_command,
     create_app,
@@ -128,10 +129,16 @@ def test_build_hf_commands_support_repo_sync() -> None:
     publish_cmd = build_hf_publish_command(
         HFPublishRequest(
             source_dir="outputs/training_qwen3_4b_sft",
-            repo_id="your-org/conarrative-writer-qwen3-4b-lora",
+            namespace="your-org",
+            project="conarrative",
+            role="writer",
+            base_model="Qwen/Qwen3-4B",
+            stage="sft",
             repo_type="model",
             private=True,
             exclude_checkpoints=True,
+            auto_tag=True,
+            release_prefix="v",
             ignore_patterns=["*.pt"],
         )
     )
@@ -139,6 +146,8 @@ def test_build_hf_commands_support_repo_sync() -> None:
     assert publish_cmd[2] == "publish"
     assert "--private" in publish_cmd
     assert "--exclude-checkpoints" in publish_cmd
+    assert "--namespace" in publish_cmd
+    assert "--auto-tag" in publish_cmd
     assert "--ignore-pattern" in publish_cmd
 
     pull_cmd = build_hf_pull_command(
@@ -291,6 +300,20 @@ def test_story_import_and_ui_preset_endpoints(tmp_path: Path) -> None:
     assert listed_after_delete.json()["items"].get("runtime", []) == []
 
 
+def test_suggest_hf_release_builds_standard_repo_id() -> None:
+    payload = suggest_hf_release(
+        namespace="your-org",
+        repo_type="model",
+        project="conarrative",
+        role="writer",
+        base_model="Qwen/Qwen3-4B",
+        stage="sft",
+        release_prefix="v",
+    )
+    assert payload["repo_id"] == "your-org/conarrative-writer-qwen3-4b-sft-lora"
+    assert payload["suggested_tag"].startswith("v")
+
+
 def test_hf_repo_browser_endpoint(tmp_path: Path, monkeypatch) -> None:
     config_path = write_test_config(tmp_path)
     app = create_app(load_config(config_path))
@@ -323,3 +346,17 @@ def test_hf_repo_browser_endpoint(tmp_path: Path, monkeypatch) -> None:
     payload = response.json()
     assert payload["repo_type"] == "model"
     assert payload["items"][0]["repo_id"] == "your-org/conarrative-writer-qwen3-4b-lora"
+
+
+def test_hf_release_suggest_endpoint(tmp_path: Path) -> None:
+    config_path = write_test_config(tmp_path)
+    app = create_app(load_config(config_path))
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/hf/suggest-release?namespace=your-org&repo_type=model&project=conarrative&role=writer&base_model=Qwen/Qwen3-4B&stage=sft&release_prefix=v"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["repo_id"] == "your-org/conarrative-writer-qwen3-4b-sft-lora"
+    assert payload["suggested_tag"].startswith("v")
