@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import yaml
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
@@ -24,12 +25,15 @@ from .models import (
     OutlineGenerateRequest,
     RuntimeSettings,
     SceneRequest,
+    StoryImportRequest,
     StoryCreate,
     StoryUpdate,
     TrainingRunRequest,
+    UIPresetSaveRequest,
 )
 from .orchestrator import Orchestrator
 from .runtime_settings import RuntimeSettingsStore
+from .ui_presets import UIPresetStore
 from .utils import extract_json_object
 
 
@@ -182,6 +186,7 @@ def run_process_job(command: List[str], emit, *, cwd: Path = REPO_ROOT) -> Dict[
 def create_app(config: AppConfig) -> FastAPI:
     storage = Storage(config.workspace.database_path)
     runtime_store = RuntimeSettingsStore(config.workspace.runtime_settings_path, config.backend)
+    ui_preset_store = UIPresetStore(Path(config.workspace.root) / "ui_presets.json")
     jobs = JobManager()
 
     app = FastAPI(title=config.app_name)
@@ -195,6 +200,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.config = config
     app.state.storage = storage
     app.state.runtime_store = runtime_store
+    app.state.ui_preset_store = ui_preset_store
     app.state.jobs = jobs
 
     web_dir = Path(__file__).parent / "web"
@@ -253,6 +259,15 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.post("/api/stories")
     def create_story(payload: StoryCreate) -> Dict[str, Any]:
         story = storage.create_story(payload)
+        return story.model_dump()
+
+    @app.post("/api/stories/import")
+    def import_story(payload: StoryImportRequest) -> Dict[str, Any]:
+        raw = yaml.safe_load(payload.yaml_text) or {}
+        try:
+            story = storage.create_story(StoryCreate(**raw))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid story YAML: {exc}") from exc
         return story.model_dump()
 
     @app.get("/api/stories/{story_id}")
@@ -394,6 +409,25 @@ def create_app(config: AppConfig) -> FastAPI:
         if job is None:
             raise HTTPException(status_code=404, detail="Job not found")
         return job.model_dump()
+
+    @app.get("/api/ui-presets")
+    def list_ui_presets() -> Dict[str, Any]:
+        return {"items": ui_preset_store.list_all()}
+
+    @app.post("/api/ui-presets")
+    def save_ui_preset(payload: UIPresetSaveRequest) -> Dict[str, Any]:
+        try:
+            record = ui_preset_store.save(payload.kind, payload.name, payload.payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return record.model_dump(mode="json")
+
+    @app.delete("/api/ui-presets/{kind}/{name}")
+    def delete_ui_preset(kind: str, name: str) -> Dict[str, Any]:
+        deleted = ui_preset_store.delete(kind, name)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Preset not found")
+        return {"ok": True, "kind": kind, "name": name}
 
     @app.post("/api/system/jobs/one-click")
     def submit_one_click_job(payload: OneClickLoopRequest) -> Dict[str, Any]:

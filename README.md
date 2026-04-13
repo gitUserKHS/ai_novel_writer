@@ -185,8 +185,11 @@ The web UI now ships with:
 
 - guided quick-start cards
 - sample story templates for `달빛 극장`, `유리 항만`, `붉은 기록 보관소`
+- direct `story.yaml` upload/import from the launchpad
 - runtime preset buttons for `mock`, `qwen native`, and local critic/world-model flows
+- saved browser-side presets for runtime, one-click, generalist, and training forms
 - browser-side launch panels for `one-click loop`, `generalist loop`, and direct `train_qlora.py` jobs
+- automation job summary cards with parsed JSON result previews
 - a scene inspector that shows accepted text, candidate scores, and raw JSON side by side
 - a clearer export / evaluate / training-bundle workflow
 

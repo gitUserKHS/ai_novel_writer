@@ -352,6 +352,26 @@ a:hover {
   margin-bottom: 16px;
 }
 
+.upload-row {
+  margin-bottom: 14px;
+}
+
+.upload-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preset-bar {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(12, 31, 43, 0.04);
+  border: 1px solid rgba(24, 47, 64, 0.08);
+}
+
 .template-chip,
 .ghost-button,
 .compact {
@@ -398,6 +418,27 @@ a:hover {
   border-radius: 18px;
   background: rgba(255, 252, 247, 0.92);
   padding: 14px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.summary-chip {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(12, 31, 43, 0.05);
+  border: 1px solid rgba(24, 47, 64, 0.08);
+}
+
+.summary-chip strong {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 6px;
 }
 
 .story-card {
@@ -682,7 +723,8 @@ a:hover {
 
   .two-col,
   .three-col,
-  .stat-grid {
+  .stat-grid,
+  .summary-grid {
     grid-template-columns: 1fr;
   }
 

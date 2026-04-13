@@ -373,3 +373,20 @@ class TrainingRunRequest(BaseModel):
     model_name_or_path: Optional[str] = None
     dry_run: bool = False
     print_config: bool = False
+
+
+class StoryImportRequest(BaseModel):
+    yaml_text: str
+
+
+class UIPresetSaveRequest(BaseModel):
+    kind: str
+    name: str
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class UIPresetRecord(BaseModel):
+    kind: str
+    name: str
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    saved_at: str = Field(default_factory=utcnow_iso)

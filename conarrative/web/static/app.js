@@ -3,6 +3,7 @@ const state = {
   stories: [],
   jobs: [],
   currentSceneId: null,
+  uiPresets: {},
 };
 
 const storyTemplates = {
@@ -104,6 +105,33 @@ const runtimePresets = {
   },
 };
 
+const presetKinds = {
+  runtime: {
+    selectId: "runtime-preset-select",
+    label: "runtime",
+    collect: () => collectRuntimePayload(document.getElementById("runtime-form")),
+    apply: (payload) => fillRuntimeForm(payload),
+  },
+  one_click: {
+    selectId: "one-click-preset-select",
+    label: "one-click",
+    collect: () => collectOneClickPayload(document.getElementById("one-click-form")),
+    apply: (payload) => fillOneClickForm(payload),
+  },
+  generalist: {
+    selectId: "generalist-preset-select",
+    label: "generalist",
+    collect: () => collectGeneralistPayload(document.getElementById("generalist-form")),
+    apply: (payload) => fillGeneralistForm(payload),
+  },
+  training: {
+    selectId: "training-preset-select",
+    label: "training",
+    collect: () => collectTrainingPayload(document.getElementById("training-form")),
+    apply: (payload) => fillTrainingForm(payload),
+  },
+};
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -129,6 +157,26 @@ function toPercent(value) {
   return `${Math.round(value * 100)}%`;
 }
 
+function numberOrNull(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return null;
+  }
+  return numeric;
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+}
+
+function basename(value) {
+  const parts = String(value ?? "").split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : String(value ?? "");
+}
+
 function logLine(message, tone = "info") {
   const panel = document.getElementById("log-panel");
   const row = document.createElement("div");
@@ -139,10 +187,8 @@ function logLine(message, tone = "info") {
 }
 
 async function api(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  const res = await fetch(path, { ...options, headers });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`${res.status} ${res.statusText}: ${text}`);
@@ -181,41 +227,226 @@ function ensureStorySelected() {
   }
 }
 
+function renderEmpty(container, message) {
+  container.innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
+}
+
+function fillCreateStoryForm(payload) {
+  const form = document.getElementById("create-story-form");
+  form.title.value = payload.title || "";
+  form.genre.value = payload.genre || "";
+  form.tone.value = payload.tone || "";
+  form.premise.value = payload.premise || "";
+  form.themes.value = (payload.themes || []).join("\n");
+  form.characters.value = (payload.characters || []).join("\n");
+  form.constraints.value = (payload.constraints || []).join("\n");
+  form.target_scene_count.value = String(payload.target_scene_count || 6);
+  form.target_word_count.value = String(payload.target_word_count || 8000);
+}
+
 function applyStoryTemplate(templateKey) {
   const template = storyTemplates[templateKey];
   if (!template) return;
-  const form = document.getElementById("create-story-form");
-  form.title.value = template.title;
-  form.genre.value = template.genre;
-  form.tone.value = template.tone;
-  form.premise.value = template.premise;
-  form.themes.value = template.themes.join("\n");
-  form.characters.value = template.characters.join("\n");
-  form.constraints.value = template.constraints.join("\n");
-  form.target_scene_count.value = String(template.target_scene_count);
-  form.target_word_count.value = String(template.target_word_count);
+  fillCreateStoryForm(template);
   logLine(`샘플 템플릿 적용: ${template.title}`);
+}
+
+function fillRuntimeForm(payload) {
+  const form = document.getElementById("runtime-form");
+  form.provider.value = payload.provider || "mock";
+  form.base_url.value = payload.base_url || "";
+  form.api_key.value = payload.api_key || "";
+  form.model.value = payload.model || "";
+  form.temperature.value = String(payload.temperature ?? 0.9);
+  form.critic_temperature.value = String(payload.critic_temperature ?? 0.2);
+  form.max_tokens.value = String(payload.max_tokens ?? 2048);
+  form.cache_responses.checked = !!payload.cache_responses;
+  form.role_models_json.value = JSON.stringify(payload.role_models || {}, null, 2);
 }
 
 function applyRuntimePreset(presetKey) {
   const preset = runtimePresets[presetKey];
   if (!preset) return;
-  const form = document.getElementById("runtime-form");
-  form.provider.value = preset.provider;
-  form.base_url.value = preset.base_url;
-  form.api_key.value = preset.api_key;
-  form.model.value = preset.model;
-  form.temperature.value = String(preset.temperature);
-  form.critic_temperature.value = String(preset.critic_temperature);
-  form.max_tokens.value = String(preset.max_tokens);
-  form.cache_responses.checked = !!preset.cache_responses;
-  form.role_models_json.value = JSON.stringify(preset.role_models || {}, null, 2);
+  fillRuntimeForm(preset);
   document.getElementById("runtime-result").textContent = JSON.stringify(preset, null, 2);
   logLine(`runtime preset 적용: ${presetKey}`);
 }
 
-function renderEmpty(container, message) {
-  container.innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
+function fillOneClickForm(payload) {
+  const form = document.getElementById("one-click-form");
+  form.preset.value = payload.preset || "qwen-native";
+  form.mode.value = payload.mode || "smoke";
+  form.story_file.value = payload.story_file || "examples/story.yaml";
+  form.scene_file.value = payload.scene_file || "examples/scene_smoke.yaml";
+  form.train_action.value = payload.train_action || "skip";
+  form.train_preset.value = payload.train_preset || "none";
+  form.scene_limit.value = payload.scene_limit || 0;
+  form.run_tests.checked = !!payload.run_tests;
+}
+
+function fillGeneralistForm(payload) {
+  const form = document.getElementById("generalist-form");
+  form.preset.value = payload.preset || "qwen-loop";
+  form.mode.value = payload.mode || "smoke";
+  form.story_dir.value = payload.story_dir || "examples/story_pack";
+  form.story_offset.value = payload.story_offset || 0;
+  form.story_limit.value = payload.story_limit || 0;
+  form.scene_limit.value = payload.scene_limit || 0;
+  form.train_action.value = payload.train_action || "skip";
+  form.train_preset.value = payload.train_preset || "none";
+  form.resume.checked = payload.resume !== false;
+}
+
+function fillTrainingForm(payload) {
+  const form = document.getElementById("training-form");
+  form.config.value = payload.config || "configs/training_qwen3_4b_sft_smoke.yaml";
+  form.train_file.value = payload.train_file || "";
+  form.eval_file.value = payload.eval_file || "";
+  form.output_dir.value = payload.output_dir || "";
+  form.model_name_or_path.value = payload.model_name_or_path || "";
+  form.dry_run.checked = !!payload.dry_run;
+  form.print_config.checked = !!payload.print_config;
+}
+
+function collectRuntimePayload(form) {
+  let roleModels = {};
+  try {
+    roleModels = JSON.parse(form.role_models_json.value || "{}");
+  } catch (error) {
+    throw new Error("Role models JSON 형식이 올바르지 않습니다.");
+  }
+  return {
+    provider: form.provider.value,
+    base_url: form.base_url.value,
+    api_key: form.api_key.value,
+    model: form.model.value,
+    temperature: Number(form.temperature.value || 0),
+    critic_temperature: Number(form.critic_temperature.value || 0),
+    max_tokens: Number(form.max_tokens.value || 0),
+    cache_responses: !!form.cache_responses.checked,
+    role_models: roleModels,
+    timeout_seconds: 120,
+    extra_headers: {},
+    cache_dir: "workspace/cache",
+  };
+}
+
+function collectOneClickPayload(form) {
+  return {
+    preset: form.preset.value,
+    mode: form.mode.value,
+    train_action: form.train_action.value,
+    train_preset: form.train_preset.value,
+    story_file: form.story_file.value,
+    scene_file: form.scene_file.value,
+    scene_limit: numberOrNull(form.scene_limit.value),
+    run_tests: !!form.run_tests.checked,
+  };
+}
+
+function collectGeneralistPayload(form) {
+  return {
+    preset: form.preset.value,
+    mode: form.mode.value,
+    train_action: form.train_action.value,
+    train_preset: form.train_preset.value,
+    story_dir: form.story_dir.value,
+    story_offset: Number(form.story_offset.value || 0),
+    story_limit: numberOrNull(form.story_limit.value),
+    scene_limit: numberOrNull(form.scene_limit.value),
+    resume: !!form.resume.checked,
+  };
+}
+
+function collectTrainingPayload(form) {
+  return {
+    config: form.config.value,
+    train_file: form.train_file.value || null,
+    eval_file: form.eval_file.value || null,
+    output_dir: form.output_dir.value || null,
+    model_name_or_path: form.model_name_or_path.value || null,
+    dry_run: !!form.dry_run.checked,
+    print_config: !!form.print_config.checked,
+  };
+}
+
+function presetOptions(kind) {
+  return state.uiPresets[kind] || [];
+}
+
+function presetSelect(kind) {
+  return document.getElementById(presetKinds[kind].selectId);
+}
+
+function selectedPresetName(kind) {
+  return presetSelect(kind).value || "";
+}
+
+function getPresetRecord(kind, name) {
+  return presetOptions(kind).find((item) => item.name === name) || null;
+}
+
+function refreshPresetSelect(kind) {
+  const select = presetSelect(kind);
+  const currentValue = select.value;
+  const options = presetOptions(kind);
+  select.innerHTML = `<option value="">저장된 preset 선택</option>`;
+  options.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.name;
+    option.textContent = `${item.name} · ${formatDateTime(item.saved_at)}`;
+    select.appendChild(option);
+  });
+  if (options.some((item) => item.name === currentValue)) {
+    select.value = currentValue;
+  }
+}
+
+async function refreshUiPresets() {
+  const data = await api("/api/ui-presets");
+  state.uiPresets = data.items || {};
+  Object.keys(presetKinds).forEach((kind) => refreshPresetSelect(kind));
+}
+
+async function loadSavedPreset(kind) {
+  const name = selectedPresetName(kind);
+  if (!name) {
+    throw new Error("먼저 저장된 preset을 선택하세요.");
+  }
+  const record = getPresetRecord(kind, name);
+  if (!record) {
+    throw new Error("선택한 preset을 찾지 못했습니다.");
+  }
+  presetKinds[kind].apply(record.payload || {});
+  logLine(`${presetKinds[kind].label} preset 불러오기: ${name}`);
+}
+
+async function saveCurrentPreset(kind) {
+  const name = window.prompt(`${presetKinds[kind].label} preset 이름`, selectedPresetName(kind) || "");
+  if (!name) {
+    return;
+  }
+  const payload = presetKinds[kind].collect();
+  await api("/api/ui-presets", {
+    method: "POST",
+    body: JSON.stringify({ kind, name, payload }),
+  });
+  await refreshUiPresets();
+  presetSelect(kind).value = name;
+  logLine(`${presetKinds[kind].label} preset 저장: ${name}`);
+}
+
+async function deleteSavedPreset(kind) {
+  const name = selectedPresetName(kind);
+  if (!name) {
+    throw new Error("삭제할 preset을 먼저 선택하세요.");
+  }
+  if (!window.confirm(`preset '${name}' 을(를) 삭제할까요?`)) {
+    return;
+  }
+  await api(`/api/ui-presets/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`, { method: "DELETE" });
+  await refreshUiPresets();
+  logLine(`${presetKinds[kind].label} preset 삭제: ${name}`);
 }
 
 function renderStories() {
@@ -256,6 +487,9 @@ async function loadStories() {
   if (!state.selectedStoryId && state.stories.length) {
     state.selectedStoryId = state.stories[0].id;
   }
+  if (state.selectedStoryId && !state.stories.some((item) => item.id === state.selectedStoryId)) {
+    state.selectedStoryId = state.stories.length ? state.stories[0].id : null;
+  }
   document.getElementById("story-count-pill").textContent = `stories · ${state.stories.length}`;
   renderStories();
   if (state.selectedStoryId) {
@@ -272,16 +506,7 @@ async function refreshHealth() {
 
 async function refreshRuntime() {
   const data = await api("/api/runtime-settings");
-  const form = document.getElementById("runtime-form");
-  form.provider.value = data.provider;
-  form.base_url.value = data.base_url;
-  form.api_key.value = data.api_key;
-  form.model.value = data.model;
-  form.temperature.value = data.temperature;
-  form.critic_temperature.value = data.critic_temperature;
-  form.max_tokens.value = data.max_tokens;
-  form.cache_responses.checked = !!data.cache_responses;
-  form.role_models_json.value = JSON.stringify(data.role_models || {}, null, 2);
+  fillRuntimeForm(data);
   document.getElementById("runtime-result").textContent = JSON.stringify(data, null, 2);
 }
 
@@ -531,6 +756,114 @@ async function refreshJobs() {
   }
 }
 
+function summaryEntry(label, value) {
+  return { label, value: value == null || value === "" ? "-" : String(value) };
+}
+
+function summarizeParsedJson(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return [];
+  }
+
+  const items = [];
+  if (typeof payload.ok === "boolean") {
+    items.push(summaryEntry("Result", payload.ok ? "ok" : "failed"));
+  }
+  if (payload.story_id) {
+    items.push(summaryEntry("Story", payload.story_id));
+  }
+  if (payload.path) {
+    items.push(summaryEntry("Path", basename(payload.path)));
+  }
+  if (payload.paths && typeof payload.paths === "object") {
+    items.push(summaryEntry("Artifacts", Object.keys(payload.paths).length));
+  }
+  if (payload.counts && typeof payload.counts === "object") {
+    items.push(summaryEntry("Count keys", Object.keys(payload.counts).length));
+  }
+  if (payload.dataset_counts && typeof payload.dataset_counts === "object") {
+    items.push(summaryEntry("Dataset keys", Object.keys(payload.dataset_counts).length));
+  }
+  if (Array.isArray(payload.story_ids)) {
+    items.push(summaryEntry("Stories", payload.story_ids.length));
+  }
+  if (Array.isArray(payload.manifests)) {
+    items.push(summaryEntry("Manifests", payload.manifests.length));
+  }
+  if (typeof payload.scene_count === "number") {
+    items.push(summaryEntry("Scenes", payload.scene_count));
+  }
+  if (typeof payload.returncode === "number") {
+    items.push(summaryEntry("Exit", payload.returncode));
+  }
+
+  Object.entries(payload)
+    .filter(([key, value]) => {
+      if (items.length >= 6) return false;
+      if (["ok", "story_id", "path", "paths", "counts", "dataset_counts", "story_ids", "manifests", "scene_count", "returncode"].includes(key)) {
+        return false;
+      }
+      return ["string", "number", "boolean"].includes(typeof value);
+    })
+    .slice(0, 6 - items.length)
+    .forEach(([key, value]) => items.push(summaryEntry(key, value)));
+
+  return items.slice(0, 6);
+}
+
+function renderSummaryGrid(items) {
+  if (!items.length) return "";
+  return `
+    <div class="summary-grid">
+      ${items
+        .map(
+          (item) => `
+            <div class="summary-chip">
+              <strong>${escapeHtml(item.label)}</strong>
+              <span>${escapeHtml(item.value)}</span>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderSystemJobCard(job) {
+  const parsed = job.result?.parsed_json || null;
+  const summaryItems = [
+    summaryEntry("Status", job.status),
+    summaryEntry("Progress", toPercent(Number(job.progress || 0))),
+    summaryEntry("Started", formatDateTime(job.created_at)),
+    ...summarizeParsedJson(parsed),
+  ].slice(0, 6);
+  const commandPreview = Array.isArray(job.result?.command)
+    ? shortText(job.result.command.join(" "), 220)
+    : "";
+  const outputTail = Array.isArray(job.result?.output_tail) ? job.result.output_tail.slice(-8).join("\n") : "";
+
+  return `
+    <div class="job-card">
+      <strong>${escapeHtml(job.job_type)}</strong>
+      <div class="meta-row">
+        <span class="badge">${escapeHtml(job.status)}</span>
+        <span class="badge">${toPercent(Number(job.progress || 0))}</span>
+        <span class="badge">${escapeHtml(formatDateTime(job.created_at))}</span>
+      </div>
+      <div class="job-progress"><span style="width:${toPercent(Number(job.progress || 0))}"></span></div>
+      ${renderSummaryGrid(summaryItems)}
+      ${commandPreview ? `<p class="muted">cmd · ${escapeHtml(commandPreview)}</p>` : ""}
+      ${(job.messages || [])
+        .slice(-5)
+        .map((message) => `<p class="muted">${escapeHtml(message.message)}</p>`)
+        .join("")}
+      ${parsed ? `<pre class="code-panel compact">${escapeHtml(JSON.stringify(parsed, null, 2))}</pre>` : ""}
+      ${!parsed && outputTail ? `<pre class="code-panel compact">${escapeHtml(outputTail)}</pre>` : ""}
+      ${job.error ? `<pre class="code-panel compact">${escapeHtml(job.error)}</pre>` : ""}
+    </div>
+  `;
+}
+
 async function refreshSystemJobs() {
   const data = await api("/api/jobs");
   const jobs = (data.items || []).filter((job) =>
@@ -544,31 +877,9 @@ async function refreshSystemJobs() {
     return;
   }
 
-  let hasPending = false;
-  jobs.forEach((job) => {
-    if (job.status === "queued" || job.status === "running") {
-      hasPending = true;
-    }
-    const row = document.createElement("div");
-    row.className = "job-card";
-    row.innerHTML = `
-      <strong>${escapeHtml(job.job_type)}</strong>
-      <div class="meta-row">
-        <span class="badge">${escapeHtml(job.status)}</span>
-        <span class="badge">${toPercent(Number(job.progress || 0))}</span>
-        <span class="badge">${escapeHtml(job.created_at || "")}</span>
-      </div>
-      <div class="job-progress"><span style="width:${toPercent(Number(job.progress || 0))}"></span></div>
-      ${(job.messages || [])
-        .slice(-5)
-        .map((message) => `<p class="muted">${escapeHtml(message.message)}</p>`)
-        .join("")}
-      ${job.result ? `<pre class="code-panel compact">${escapeHtml(JSON.stringify(job.result, null, 2))}</pre>` : ""}
-      ${job.error ? `<pre class="code-panel compact">${escapeHtml(job.error)}</pre>` : ""}
-    `;
-    container.appendChild(row);
-  });
+  container.innerHTML = jobs.map((job) => renderSystemJobCard(job)).join("");
 
+  const hasPending = jobs.some((job) => job.status === "queued" || job.status === "running");
   if (hasPending) {
     window.setTimeout(refreshSystemJobs, 1500);
   }
@@ -614,36 +925,12 @@ async function refreshStory() {
   }
 }
 
-function collectRuntimePayload(form) {
-  let roleModels = {};
-  try {
-    roleModels = JSON.parse(form.role_models_json.value || "{}");
-  } catch (error) {
-    throw new Error("Role models JSON 형식이 올바르지 않습니다.");
-  }
-  return {
-    provider: form.provider.value,
-    base_url: form.base_url.value,
-    api_key: form.api_key.value,
-    model: form.model.value,
-    temperature: Number(form.temperature.value || 0),
-    critic_temperature: Number(form.critic_temperature.value || 0),
-    max_tokens: Number(form.max_tokens.value || 0),
-    cache_responses: !!form.cache_responses.checked,
-    role_models: roleModels,
-    timeout_seconds: 120,
-    extra_headers: {},
-    cache_dir: "workspace/cache",
-  };
-}
-
 async function runTask(label, task) {
   try {
-    const result = await task();
-    return result;
+    return await task();
   } catch (error) {
     logLine(`${label} 실패: ${error.message}`, "error");
-    alert(error.message);
+    window.alert(error.message);
     throw error;
   }
 }
@@ -671,6 +958,25 @@ async function submitCreateStory(event) {
     state.selectedStoryId = story.id;
     await loadStories();
   });
+}
+
+async function importStoryYaml(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  if (!file) {
+    return;
+  }
+  await runTask("Story YAML import", async () => {
+    const yamlText = await file.text();
+    const story = await api("/api/stories/import", {
+      method: "POST",
+      body: JSON.stringify({ yaml_text: yamlText }),
+    });
+    logLine(`YAML import 완료: ${story.title}`);
+    state.selectedStoryId = story.id;
+    await loadStories();
+  });
+  input.value = "";
 }
 
 async function saveBible(event) {
@@ -811,17 +1117,7 @@ async function exportBundle() {
 async function submitOneClickJob(event) {
   event.preventDefault();
   await runTask("One-click 실행", async () => {
-    const form = event.target;
-    const payload = {
-      preset: form.preset.value,
-      mode: form.mode.value,
-      train_action: form.train_action.value,
-      train_preset: form.train_preset.value,
-      story_file: form.story_file.value,
-      scene_file: form.scene_file.value,
-      scene_limit: Number(form.scene_limit.value || 0) || null,
-      run_tests: !!form.run_tests.checked,
-    };
+    const payload = collectOneClickPayload(event.target);
     const job = await api("/api/system/jobs/one-click", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -835,18 +1131,7 @@ async function submitOneClickJob(event) {
 async function submitGeneralistJob(event) {
   event.preventDefault();
   await runTask("Generalist 실행", async () => {
-    const form = event.target;
-    const payload = {
-      preset: form.preset.value,
-      mode: form.mode.value,
-      train_action: form.train_action.value,
-      train_preset: form.train_preset.value,
-      story_dir: form.story_dir.value,
-      story_offset: Number(form.story_offset.value || 0),
-      story_limit: Number(form.story_limit.value || 0) || null,
-      scene_limit: Number(form.scene_limit.value || 0) || null,
-      resume: !!form.resume.checked,
-    };
+    const payload = collectGeneralistPayload(event.target);
     const job = await api("/api/system/jobs/generalist", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -860,16 +1145,7 @@ async function submitGeneralistJob(event) {
 async function submitTrainingJob(event) {
   event.preventDefault();
   await runTask("Training 실행", async () => {
-    const form = event.target;
-    const payload = {
-      config: form.config.value,
-      train_file: form.train_file.value || null,
-      eval_file: form.eval_file.value || null,
-      output_dir: form.output_dir.value || null,
-      model_name_or_path: form.model_name_or_path.value || null,
-      dry_run: !!form.dry_run.checked,
-      print_config: !!form.print_config.checked,
-    };
+    const payload = collectTrainingPayload(event.target);
     const job = await api("/api/system/jobs/train", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -895,8 +1171,27 @@ function bindTemplates() {
   });
 }
 
+function bindPresetControls() {
+  document.getElementById("load-runtime-preset-btn").addEventListener("click", () => runTask("runtime preset 불러오기", () => loadSavedPreset("runtime")));
+  document.getElementById("save-runtime-preset-btn").addEventListener("click", () => runTask("runtime preset 저장", () => saveCurrentPreset("runtime")));
+  document.getElementById("delete-runtime-preset-btn").addEventListener("click", () => runTask("runtime preset 삭제", () => deleteSavedPreset("runtime")));
+
+  document.getElementById("load-one-click-preset-btn").addEventListener("click", () => runTask("one-click preset 불러오기", () => loadSavedPreset("one_click")));
+  document.getElementById("save-one-click-preset-btn").addEventListener("click", () => runTask("one-click preset 저장", () => saveCurrentPreset("one_click")));
+  document.getElementById("delete-one-click-preset-btn").addEventListener("click", () => runTask("one-click preset 삭제", () => deleteSavedPreset("one_click")));
+
+  document.getElementById("load-generalist-preset-btn").addEventListener("click", () => runTask("generalist preset 불러오기", () => loadSavedPreset("generalist")));
+  document.getElementById("save-generalist-preset-btn").addEventListener("click", () => runTask("generalist preset 저장", () => saveCurrentPreset("generalist")));
+  document.getElementById("delete-generalist-preset-btn").addEventListener("click", () => runTask("generalist preset 삭제", () => deleteSavedPreset("generalist")));
+
+  document.getElementById("load-training-preset-btn").addEventListener("click", () => runTask("training preset 불러오기", () => loadSavedPreset("training")));
+  document.getElementById("save-training-preset-btn").addEventListener("click", () => runTask("training preset 저장", () => saveCurrentPreset("training")));
+  document.getElementById("delete-training-preset-btn").addEventListener("click", () => runTask("training preset 삭제", () => deleteSavedPreset("training")));
+}
+
 function bindActions() {
   document.getElementById("create-story-form").addEventListener("submit", submitCreateStory);
+  document.getElementById("story-yaml-input").addEventListener("change", importStoryYaml);
   document.getElementById("bible-form").addEventListener("submit", saveBible);
   document.getElementById("runtime-form").addEventListener("submit", saveRuntime);
   document.getElementById("one-click-form").addEventListener("submit", submitOneClickJob);
@@ -920,10 +1215,10 @@ function bindActions() {
 window.addEventListener("DOMContentLoaded", async () => {
   bindTabs();
   bindTemplates();
+  bindPresetControls();
   bindActions();
   applyStoryTemplate("moon-theater");
-  await refreshHealth();
-  await refreshRuntime();
+  await Promise.all([refreshHealth(), refreshRuntime(), refreshUiPresets()]);
   await loadStories();
   await refreshSystemJobs();
   setInterval(refreshHealth, 6000);

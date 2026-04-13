@@ -57,6 +57,12 @@
             <button type="button" class="template-chip" data-story-template="glass-harbor">유리 항만</button>
             <button type="button" class="template-chip" data-story-template="red-archive">붉은 기록 보관소</button>
           </div>
+          <div class="upload-row">
+            <label class="ghost-button compact upload-button">
+              <span>Story YAML 업로드</span>
+              <input id="story-yaml-input" type="file" accept=".yaml,.yml,text/yaml" class="sr-only" />
+            </label>
+          </div>
           <form id="create-story-form" class="stack form-stack">
             <label class="field">
               <span>제목</span>
@@ -323,6 +329,17 @@
                     <button type="button" class="template-chip" data-runtime-preset="qwen-local">Qwen Local Critic</button>
                     <button type="button" class="template-chip" data-runtime-preset="qwen-strict">Qwen Strict</button>
                   </div>
+                  <div class="preset-bar">
+                    <label class="field">
+                      <span>Saved runtime presets</span>
+                      <select id="runtime-preset-select"></select>
+                    </label>
+                    <div class="action-stack horizontal">
+                      <button type="button" class="ghost-button compact" id="load-runtime-preset-btn">불러오기</button>
+                      <button type="button" class="ghost-button compact" id="save-runtime-preset-btn">현재값 저장</button>
+                      <button type="button" class="ghost-button compact" id="delete-runtime-preset-btn">삭제</button>
+                    </div>
+                  </div>
                   <form id="runtime-form" class="stack form-stack">
                     <div class="two-col">
                       <label class="field">
@@ -395,6 +412,17 @@
                       <h3>단일 스토리 실행</h3>
                     </div>
                   </div>
+                  <div class="preset-bar">
+                    <label class="field">
+                      <span>Saved one-click presets</span>
+                      <select id="one-click-preset-select"></select>
+                    </label>
+                    <div class="action-stack horizontal">
+                      <button type="button" class="ghost-button compact" id="load-one-click-preset-btn">불러오기</button>
+                      <button type="button" class="ghost-button compact" id="save-one-click-preset-btn">현재값 저장</button>
+                      <button type="button" class="ghost-button compact" id="delete-one-click-preset-btn">삭제</button>
+                    </div>
+                  </div>
                   <form id="one-click-form" class="stack form-stack">
                     <div class="two-col">
                       <label class="field">
@@ -460,6 +488,17 @@
                     <div>
                       <p class="section-kicker">Generalist</p>
                       <h3>다중 스토리 배치 실행</h3>
+                    </div>
+                  </div>
+                  <div class="preset-bar">
+                    <label class="field">
+                      <span>Saved generalist presets</span>
+                      <select id="generalist-preset-select"></select>
+                    </label>
+                    <div class="action-stack horizontal">
+                      <button type="button" class="ghost-button compact" id="load-generalist-preset-btn">불러오기</button>
+                      <button type="button" class="ghost-button compact" id="save-generalist-preset-btn">현재값 저장</button>
+                      <button type="button" class="ghost-button compact" id="delete-generalist-preset-btn">삭제</button>
                     </div>
                   </div>
                   <form id="generalist-form" class="stack form-stack">
@@ -530,6 +569,17 @@
                     <div>
                       <p class="section-kicker">Training</p>
                       <h3>학습 작업 실행</h3>
+                    </div>
+                  </div>
+                  <div class="preset-bar">
+                    <label class="field">
+                      <span>Saved training presets</span>
+                      <select id="training-preset-select"></select>
+                    </label>
+                    <div class="action-stack horizontal">
+                      <button type="button" class="ghost-button compact" id="load-training-preset-btn">불러오기</button>
+                      <button type="button" class="ghost-button compact" id="save-training-preset-btn">현재값 저장</button>
+                      <button type="button" class="ghost-button compact" id="delete-training-preset-btn">삭제</button>
                     </div>
                   </div>
                   <form id="training-form" class="stack form-stack">

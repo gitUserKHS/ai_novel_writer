@@ -167,3 +167,61 @@ def test_system_job_endpoints_submit_and_complete(tmp_path: Path, monkeypatch) -
     assert training.status_code == 200
     training_job = wait_for_job(client, training.json()["id"])
     assert training_job["status"] == "succeeded"
+
+
+def test_story_import_and_ui_preset_endpoints(tmp_path: Path) -> None:
+    config_path = write_test_config(tmp_path)
+    app = create_app(load_config(config_path))
+    client = TestClient(app)
+
+    import_response = client.post(
+        "/api/stories/import",
+        json={
+            "yaml_text": yaml.safe_dump(
+                {
+                    "title": "Imported Story",
+                    "genre": "mystery",
+                    "tone": "tense",
+                    "premise": "A locked theater holds the missing clue.",
+                    "themes": ["memory", "loss"],
+                    "characters": ["Seo-yun", "Min-ho"],
+                    "constraints": ["No time travel"],
+                    "target_scene_count": 4,
+                    "target_word_count": 5000,
+                },
+                allow_unicode=True,
+            )
+        },
+    )
+    assert import_response.status_code == 200
+    imported = import_response.json()
+    assert imported["title"] == "Imported Story"
+    assert imported["id"].startswith("imported-story")
+
+    preset_response = client.post(
+        "/api/ui-presets",
+        json={
+            "kind": "runtime",
+            "name": "local-qwen",
+            "payload": {
+                "provider": "ollama",
+                "model": "qwen3:4b",
+                "base_url": "http://127.0.0.1:11434",
+            },
+        },
+    )
+    assert preset_response.status_code == 200
+    assert preset_response.json()["name"] == "local-qwen"
+
+    listed = client.get("/api/ui-presets")
+    assert listed.status_code == 200
+    assert "runtime" in listed.json()["items"]
+    assert listed.json()["items"]["runtime"][0]["payload"]["model"] == "qwen3:4b"
+
+    deleted = client.delete("/api/ui-presets/runtime/local-qwen")
+    assert deleted.status_code == 200
+    assert deleted.json()["ok"] is True
+
+    listed_after_delete = client.get("/api/ui-presets")
+    assert listed_after_delete.status_code == 200
+    assert listed_after_delete.json()["items"].get("runtime", []) == []
