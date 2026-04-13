@@ -234,6 +234,48 @@ def run_process_job(command: List[str], emit, *, cwd: Path = REPO_ROOT) -> Dict[
     }
 
 
+def search_hf_hub(repo_type: str, search: str = "", author: str = "", limit: int = 12) -> Dict[str, Any]:
+    try:
+        from huggingface_hub import HfApi
+    except Exception as exc:
+        raise RuntimeError(
+            f"Missing Hugging Face Hub dependency: {type(exc).__name__}: {exc}. Install with: pip install huggingface_hub"
+        ) from exc
+
+    api = HfApi()
+    normalized_limit = max(1, min(int(limit or 12), 50))
+    normalized_repo_type = repo_type if repo_type in {"model", "dataset"} else "model"
+    kwargs = {
+        "search": search or None,
+        "author": author or None,
+        "limit": normalized_limit,
+    }
+    iterator = api.list_models(**kwargs) if normalized_repo_type == "model" else api.list_datasets(**kwargs)
+    items = []
+    for item in iterator:
+        repo_id = getattr(item, "id", None) or getattr(item, "modelId", None) or getattr(item, "repoId", None) or ""
+        items.append(
+            {
+                "repo_id": str(repo_id),
+                "repo_type": normalized_repo_type,
+                "author": str(getattr(item, "author", "") or ""),
+                "downloads": int(getattr(item, "downloads", 0) or 0),
+                "likes": int(getattr(item, "likes", 0) or 0),
+                "private": bool(getattr(item, "private", False)),
+                "last_modified": str(getattr(item, "lastModified", "") or ""),
+                "sha": str(getattr(item, "sha", "") or ""),
+                "tags": list(getattr(item, "tags", []) or []),
+            }
+        )
+    return {
+        "items": items,
+        "repo_type": normalized_repo_type,
+        "search": search,
+        "author": author,
+        "limit": normalized_limit,
+    }
+
+
 def create_app(config: AppConfig) -> FastAPI:
     storage = Storage(config.workspace.database_path)
     runtime_store = RuntimeSettingsStore(config.workspace.runtime_settings_path, config.backend)
@@ -464,6 +506,18 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.get("/api/ui-presets")
     def list_ui_presets() -> Dict[str, Any]:
         return {"items": ui_preset_store.list_all()}
+
+    @app.get("/api/hf/repos")
+    def browse_hf_repos(
+        repo_type: str = Query(default="model"),
+        search: str = Query(default=""),
+        author: str = Query(default=""),
+        limit: int = Query(default=12),
+    ) -> Dict[str, Any]:
+        try:
+            return search_hf_hub(repo_type=repo_type, search=search, author=author, limit=limit)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.post("/api/ui-presets")
     def save_ui_preset(payload: UIPresetSaveRequest) -> Dict[str, Any]:

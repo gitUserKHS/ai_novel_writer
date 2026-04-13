@@ -130,6 +130,18 @@ const presetKinds = {
     collect: () => collectTrainingPayload(document.getElementById("training-form")),
     apply: (payload) => fillTrainingForm(payload),
   },
+  hf_publish: {
+    selectId: "hf-publish-preset-select",
+    label: "hf-publish",
+    collect: () => collectHFPublishPayload(document.getElementById("hf-publish-form")),
+    apply: (payload) => fillHFPublishForm(payload),
+  },
+  hf_pull: {
+    selectId: "hf-pull-preset-select",
+    label: "hf-pull",
+    collect: () => collectHFPullPayload(document.getElementById("hf-pull-form")),
+    apply: (payload) => fillHFPullForm(payload),
+  },
 };
 
 function escapeHtml(value) {
@@ -306,6 +318,29 @@ function fillTrainingForm(payload) {
   form.model_name_or_path.value = payload.model_name_or_path || "";
   form.dry_run.checked = !!payload.dry_run;
   form.print_config.checked = !!payload.print_config;
+}
+
+function fillHFPublishForm(payload) {
+  const form = document.getElementById("hf-publish-form");
+  form.source_dir.value = payload.source_dir || "outputs/training_qwen3_4b_sft";
+  form.repo_id.value = payload.repo_id || "";
+  form.repo_type.value = payload.repo_type || "model";
+  form.path_in_repo.value = payload.path_in_repo || "";
+  form.revision.value = payload.revision || "";
+  form.commit_message.value = payload.commit_message || "";
+  form.private.checked = !!payload.private;
+  form.exclude_checkpoints.checked = payload.exclude_checkpoints !== false;
+  form.ignore_patterns.value = (payload.ignore_patterns || []).join("\n");
+}
+
+function fillHFPullForm(payload) {
+  const form = document.getElementById("hf-pull-form");
+  form.repo_id.value = payload.repo_id || "";
+  form.repo_type.value = payload.repo_type || "model";
+  form.local_dir.value = payload.local_dir || "outputs/hf_download";
+  form.revision.value = payload.revision || "";
+  form.allow_patterns.value = (payload.allow_patterns || []).join("\n");
+  form.ignore_patterns.value = (payload.ignore_patterns || []).join("\n");
 }
 
 function collectRuntimePayload(form) {
@@ -889,6 +924,35 @@ function renderSystemJobCard(job) {
   `;
 }
 
+function renderHFBrowserResults(items) {
+  const container = document.getElementById("hf-browser-results");
+  container.innerHTML = "";
+  if (!items.length) {
+    renderEmpty(container, "검색 결과가 없습니다.");
+    return;
+  }
+  container.innerHTML = items
+    .map(
+      (item) => `
+        <div class="job-card">
+          <strong>${escapeHtml(item.repo_id)}</strong>
+          <div class="meta-row">
+            <span class="badge">${escapeHtml(item.repo_type || "-")}</span>
+            <span class="badge">downloads ${escapeHtml(item.downloads ?? 0)}</span>
+            <span class="badge">likes ${escapeHtml(item.likes ?? 0)}</span>
+            <span class="badge">${escapeHtml(item.author || "-")}</span>
+          </div>
+          <div class="meta-row">
+            <span class="badge">updated ${escapeHtml(formatDateTime(item.last_modified))}</span>
+            <span class="badge">${item.private ? "private" : "public"}</span>
+          </div>
+          <p class="muted">${escapeHtml((item.tags || []).slice(0, 8).join(", "))}</p>
+        </div>
+      `,
+    )
+    .join("");
+}
+
 async function refreshSystemJobs() {
   const data = await api("/api/jobs");
   const jobs = (data.items || []).filter((job) =>
@@ -1209,6 +1273,22 @@ async function submitHFPullJob(event) {
   });
 }
 
+async function browseHFRepos(event) {
+  event.preventDefault();
+  await runTask("HF Browse", async () => {
+    const form = event.target;
+    const query = new URLSearchParams({
+      repo_type: form.repo_type.value,
+      search: form.search.value || "",
+      author: form.author.value || "",
+      limit: String(Number(form.limit.value || 12)),
+    });
+    const data = await api(`/api/hf/repos?${query.toString()}`);
+    renderHFBrowserResults(data.items || []);
+    logLine(`hf browse complete: ${(data.items || []).length} repos`);
+  });
+}
+
 function bindTabs() {
   document.querySelectorAll(".tab").forEach((button) => {
     button.addEventListener("click", () => setSelectedTab(button.dataset.tab));
@@ -1242,6 +1322,18 @@ function bindPresetControls() {
   document.getElementById("delete-training-preset-btn").addEventListener("click", () => runTask("training preset 삭제", () => deleteSavedPreset("training")));
 }
 
+function bindHFExtraControls() {
+  document.getElementById("load-hf-publish-preset-btn").addEventListener("click", () => runTask("hf publish preset load", () => loadSavedPreset("hf_publish")));
+  document.getElementById("save-hf-publish-preset-btn").addEventListener("click", () => runTask("hf publish preset save", () => saveCurrentPreset("hf_publish")));
+  document.getElementById("delete-hf-publish-preset-btn").addEventListener("click", () => runTask("hf publish preset delete", () => deleteSavedPreset("hf_publish")));
+
+  document.getElementById("load-hf-pull-preset-btn").addEventListener("click", () => runTask("hf pull preset load", () => loadSavedPreset("hf_pull")));
+  document.getElementById("save-hf-pull-preset-btn").addEventListener("click", () => runTask("hf pull preset save", () => saveCurrentPreset("hf_pull")));
+  document.getElementById("delete-hf-pull-preset-btn").addEventListener("click", () => runTask("hf pull preset delete", () => deleteSavedPreset("hf_pull")));
+
+  document.getElementById("hf-browser-form").addEventListener("submit", browseHFRepos);
+}
+
 function bindActions() {
   document.getElementById("create-story-form").addEventListener("submit", submitCreateStory);
   document.getElementById("story-yaml-input").addEventListener("change", importStoryYaml);
@@ -1271,6 +1363,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   bindTabs();
   bindTemplates();
   bindPresetControls();
+  bindHFExtraControls();
   bindActions();
   applyStoryTemplate("moon-theater");
   await Promise.all([refreshHealth(), refreshRuntime(), refreshUiPresets()]);

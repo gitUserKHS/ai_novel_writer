@@ -628,6 +628,17 @@
                       <h3>전체 실행 상태</h3>
                     </div>
                   </div>
+                  <div class="preset-bar">
+                    <label class="field">
+                      <span>Saved HF publish presets</span>
+                      <select id="hf-publish-preset-select"></select>
+                    </label>
+                    <div class="action-stack horizontal">
+                      <button type="button" class="ghost-button compact" id="load-hf-publish-preset-btn">Load</button>
+                      <button type="button" class="ghost-button compact" id="save-hf-publish-preset-btn">Save</button>
+                      <button type="button" class="ghost-button compact" id="delete-hf-publish-preset-btn">Delete</button>
+                    </div>
+                  </div>
                   <form id="hf-publish-form" class="stack form-stack">
                     <div class="two-col">
                       <label class="field">
@@ -678,6 +689,17 @@
                     </label>
                     <button type="submit" class="primary-button">HF Publish ?ㅽ뻾</button>
                   </form>
+                  <div class="preset-bar">
+                    <label class="field">
+                      <span>Saved HF pull presets</span>
+                      <select id="hf-pull-preset-select"></select>
+                    </label>
+                    <div class="action-stack horizontal">
+                      <button type="button" class="ghost-button compact" id="load-hf-pull-preset-btn">Load</button>
+                      <button type="button" class="ghost-button compact" id="save-hf-pull-preset-btn">Save</button>
+                      <button type="button" class="ghost-button compact" id="delete-hf-pull-preset-btn">Delete</button>
+                    </div>
+                  </div>
                   <form id="hf-pull-form" class="stack form-stack">
                     <div class="two-col">
                       <label class="field">
@@ -714,6 +736,36 @@
                     </div>
                     <button type="submit" class="primary-button">HF Pull ?ㅽ뻾</button>
                   </form>
+                  <form id="hf-browser-form" class="stack form-stack">
+                    <div class="three-col">
+                      <label class="field">
+                        <span>Repo type</span>
+                        <select name="repo_type">
+                          <option value="model">model</option>
+                          <option value="dataset">dataset</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Search</span>
+                        <input name="search" value="conarrative" placeholder="conarrative" />
+                      </label>
+                      <label class="field">
+                        <span>Author</span>
+                        <input name="author" value="" placeholder="your-org" />
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Limit</span>
+                        <input name="limit" type="number" min="1" max="50" value="12" />
+                      </label>
+                      <div class="field">
+                        <span>&nbsp;</span>
+                        <button type="submit" class="primary-button">Browse Hub</button>
+                      </div>
+                    </div>
+                  </form>
+                  <div id="hf-browser-results" class="stack"></div>
                   <div id="system-job-list" class="stack"></div>
                 </section>
               </div>

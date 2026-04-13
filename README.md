@@ -190,6 +190,8 @@ The web UI now ships with:
 - saved browser-side presets for runtime, one-click, generalist, and training forms
 - browser-side launch panels for `one-click loop`, `generalist loop`, and direct `train_qlora.py` jobs
 - browser-side launch panels for `HF publish` and `HF pull` jobs
+- saved presets for `HF publish` and `HF pull`
+- a lightweight `HF repo browser` for model and dataset discovery
 - automation job summary cards with parsed JSON result previews
 - a scene inspector that shows accepted text, candidate scores, and raw JSON side by side
 - a clearer export / evaluate / training-bundle workflow
@@ -203,6 +205,7 @@ This repository can now:
 - load a local adapter directory or a Hugging Face adapter repo id directly in `role_models`
 - publish a local adapter or dataset folder to Hugging Face Hub
 - pull a model or dataset snapshot from Hugging Face Hub into a local directory
+- generate a Hub `README.md` model card automatically when the upload source has no card yet
 
 Install the extra dependency:
 

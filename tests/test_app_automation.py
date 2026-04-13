@@ -11,6 +11,7 @@ from conarrative.app import (
     build_hf_pull_command,
     build_hf_publish_command,
     build_one_click_command,
+    search_hf_hub,
     build_training_command,
     create_app,
 )
@@ -288,3 +289,37 @@ def test_story_import_and_ui_preset_endpoints(tmp_path: Path) -> None:
     listed_after_delete = client.get("/api/ui-presets")
     assert listed_after_delete.status_code == 200
     assert listed_after_delete.json()["items"].get("runtime", []) == []
+
+
+def test_hf_repo_browser_endpoint(tmp_path: Path, monkeypatch) -> None:
+    config_path = write_test_config(tmp_path)
+    app = create_app(load_config(config_path))
+    client = TestClient(app)
+
+    def fake_search_hf_hub(repo_type: str, search: str = "", author: str = "", limit: int = 12) -> dict:
+        return {
+            "items": [
+                {
+                    "repo_id": "your-org/conarrative-writer-qwen3-4b-lora",
+                    "repo_type": repo_type,
+                    "author": author,
+                    "downloads": 42,
+                    "likes": 7,
+                    "private": False,
+                    "last_modified": "2026-04-14T00:00:00Z",
+                    "sha": "abc123",
+                    "tags": ["conarrative", "peft"],
+                }
+            ],
+            "repo_type": repo_type,
+            "search": search,
+            "author": author,
+            "limit": limit,
+        }
+
+    monkeypatch.setattr("conarrative.app.search_hf_hub", fake_search_hf_hub)
+    response = client.get("/api/hf/repos?repo_type=model&search=conarrative&author=your-org&limit=5")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["repo_type"] == "model"
+    assert payload["items"][0]["repo_id"] == "your-org/conarrative-writer-qwen3-4b-lora"
