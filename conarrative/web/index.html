@@ -383,7 +383,7 @@
                     </label>
                     <label class="field">
                       <span>Role models JSON</span>
-                      <textarea name="role_models_json" rows="8" placeholder='{"writer":"qwen3:4b","consistency_critic":"outputs/training_qwen3_4b_critic_consistency"}'></textarea>
+                      <textarea name="role_models_json" rows="8" placeholder='{"writer":"qwen3:4b","consistency_critic":"your-org/conarrative-critic-qwen3-4b-lora"}'></textarea>
                     </label>
                     <div class="action-stack horizontal">
                       <button type="submit" class="primary-button">Runtime 저장</button>
@@ -628,6 +628,92 @@
                       <h3>전체 실행 상태</h3>
                     </div>
                   </div>
+                  <form id="hf-publish-form" class="stack form-stack">
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Source dir</span>
+                        <input name="source_dir" value="outputs/training_qwen3_4b_sft" />
+                      </label>
+                      <label class="field">
+                        <span>Repo id</span>
+                        <input name="repo_id" placeholder="your-org/conarrative-writer-qwen3-4b-lora" />
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Repo type</span>
+                        <select name="repo_type">
+                          <option value="model">model</option>
+                          <option value="dataset">dataset</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Path in repo</span>
+                        <input name="path_in_repo" value="" placeholder="optional/subdir" />
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Revision</span>
+                        <input name="revision" value="" placeholder="main" />
+                      </label>
+                      <label class="field">
+                        <span>Commit message</span>
+                        <input name="commit_message" value="" placeholder="Upload writer adapter" />
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field checkbox-field">
+                        <input name="private" type="checkbox" />
+                        <span>private repo</span>
+                      </label>
+                      <label class="field checkbox-field">
+                        <input name="exclude_checkpoints" type="checkbox" checked />
+                        <span>checkpoint ?쒖쇅</span>
+                      </label>
+                    </div>
+                    <label class="field">
+                      <span>Ignore patterns</span>
+                      <textarea name="ignore_patterns" rows="3" placeholder="??以꾩뿉 ?섎굹??"></textarea>
+                    </label>
+                    <button type="submit" class="primary-button">HF Publish ?ㅽ뻾</button>
+                  </form>
+                  <form id="hf-pull-form" class="stack form-stack">
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Repo id</span>
+                        <input name="repo_id" placeholder="your-org/conarrative-critic-qwen3-4b-lora" />
+                      </label>
+                      <label class="field">
+                        <span>Local dir</span>
+                        <input name="local_dir" value="outputs/hf_download" />
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Repo type</span>
+                        <select name="repo_type">
+                          <option value="model">model</option>
+                          <option value="dataset">dataset</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Revision</span>
+                        <input name="revision" value="" placeholder="main" />
+                      </label>
+                    </div>
+                    <div class="two-col">
+                      <label class="field">
+                        <span>Allow patterns</span>
+                        <textarea name="allow_patterns" rows="3" placeholder="adapter_*"></textarea>
+                      </label>
+                      <label class="field">
+                        <span>Ignore patterns</span>
+                        <textarea name="ignore_patterns" rows="3" placeholder="checkpoint-*"></textarea>
+                      </label>
+                    </div>
+                    <button type="submit" class="primary-button">HF Pull ?ㅽ뻾</button>
+                  </form>
                   <div id="system-job-list" class="stack"></div>
                 </section>
               </div>

@@ -370,6 +370,31 @@ function collectTrainingPayload(form) {
   };
 }
 
+function collectHFPublishPayload(form) {
+  return {
+    source_dir: form.source_dir.value,
+    repo_id: form.repo_id.value,
+    repo_type: form.repo_type.value,
+    path_in_repo: form.path_in_repo.value || "",
+    revision: form.revision.value || null,
+    commit_message: form.commit_message.value || null,
+    private: !!form.private.checked,
+    exclude_checkpoints: !!form.exclude_checkpoints.checked,
+    ignore_patterns: lines(form.ignore_patterns.value),
+  };
+}
+
+function collectHFPullPayload(form) {
+  return {
+    repo_id: form.repo_id.value,
+    repo_type: form.repo_type.value,
+    local_dir: form.local_dir.value,
+    revision: form.revision.value || null,
+    allow_patterns: lines(form.allow_patterns.value),
+    ignore_patterns: lines(form.ignore_patterns.value),
+  };
+}
+
 function presetOptions(kind) {
   return state.uiPresets[kind] || [];
 }
@@ -867,7 +892,7 @@ function renderSystemJobCard(job) {
 async function refreshSystemJobs() {
   const data = await api("/api/jobs");
   const jobs = (data.items || []).filter((job) =>
-    ["one_click_loop", "generalist_loop", "training_run"].includes(job.job_type),
+    ["one_click_loop", "generalist_loop", "training_run", "hf_publish", "hf_pull"].includes(job.job_type),
   );
   const container = document.getElementById("system-job-list");
   container.innerHTML = "";
@@ -1156,6 +1181,34 @@ async function submitTrainingJob(event) {
   });
 }
 
+async function submitHFPublishJob(event) {
+  event.preventDefault();
+  await runTask("HF Publish 실행", async () => {
+    const payload = collectHFPublishPayload(event.target);
+    const job = await api("/api/system/jobs/hf-publish", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    logLine(`hf publish job 시작: ${job.id}`);
+    setSelectedTab("automation");
+    await refreshSystemJobs();
+  });
+}
+
+async function submitHFPullJob(event) {
+  event.preventDefault();
+  await runTask("HF Pull 실행", async () => {
+    const payload = collectHFPullPayload(event.target);
+    const job = await api("/api/system/jobs/hf-pull", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    logLine(`hf pull job 시작: ${job.id}`);
+    setSelectedTab("automation");
+    await refreshSystemJobs();
+  });
+}
+
 function bindTabs() {
   document.querySelectorAll(".tab").forEach((button) => {
     button.addEventListener("click", () => setSelectedTab(button.dataset.tab));
@@ -1197,6 +1250,8 @@ function bindActions() {
   document.getElementById("one-click-form").addEventListener("submit", submitOneClickJob);
   document.getElementById("generalist-form").addEventListener("submit", submitGeneralistJob);
   document.getElementById("training-form").addEventListener("submit", submitTrainingJob);
+  document.getElementById("hf-publish-form").addEventListener("submit", submitHFPublishJob);
+  document.getElementById("hf-pull-form").addEventListener("submit", submitHFPullJob);
   document.getElementById("refresh-story-btn").addEventListener("click", () => runTask("동기화", refreshStory));
   document.getElementById("refresh-story-list-btn").addEventListener("click", () => runTask("스토리 목록 새로고침", loadStories));
   document.getElementById("generate-outline-btn").addEventListener("click", generateOutline);

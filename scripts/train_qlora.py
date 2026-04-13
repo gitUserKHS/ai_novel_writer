@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from conarrative.model_refs import is_adapter_reference
 from conarrative.utils import short_text, stable_hash
 
 
@@ -117,12 +118,6 @@ def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
                 continue
             rows.append(json.loads(line))
     return rows
-
-
-def adapter_checkpoint_exists(path: str | Path) -> bool:
-    resolved = Path(path)
-    return resolved.exists() and (resolved / "adapter_config.json").exists()
-
 
 def require_training_stack() -> Dict[str, Any]:
     os.environ.setdefault("PYTHONUTF8", "1")
@@ -331,7 +326,7 @@ def load_trainable_model(cfg: Dict[str, Any], stack: Dict[str, Any]) -> tuple[An
     quantization_config = build_quantization_config(cfg, torch, BitsAndBytesConfig)
     tokenizer = load_tokenizer(cfg["model_name_or_path"], AutoTokenizer)
 
-    if adapter_checkpoint_exists(cfg["model_name_or_path"]):
+    if is_adapter_reference(cfg["model_name_or_path"]):
         model = AutoPeftModelForCausalLM.from_pretrained(
             cfg["model_name_or_path"],
             is_trainable=True,

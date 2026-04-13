@@ -375,6 +375,27 @@ class TrainingRunRequest(BaseModel):
     print_config: bool = False
 
 
+class HFPublishRequest(BaseModel):
+    source_dir: str = "outputs/training_qwen3_4b_sft"
+    repo_id: str
+    repo_type: str = "model"
+    path_in_repo: str = ""
+    revision: Optional[str] = None
+    commit_message: Optional[str] = None
+    private: bool = False
+    exclude_checkpoints: bool = True
+    ignore_patterns: List[str] = Field(default_factory=list)
+
+
+class HFPullRequest(BaseModel):
+    repo_id: str
+    repo_type: str = "model"
+    local_dir: str = "outputs/hf_download"
+    revision: Optional[str] = None
+    allow_patterns: List[str] = Field(default_factory=list)
+    ignore_patterns: List[str] = Field(default_factory=list)
+
+
 class StoryImportRequest(BaseModel):
     yaml_text: str
 

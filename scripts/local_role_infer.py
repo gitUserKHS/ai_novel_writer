@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from conarrative.model_refs import is_adapter_reference
 from conarrative.utils import extract_json_object
 
 
@@ -42,8 +43,7 @@ def load_runtime(model_ref: str) -> tuple[Any, Any, Any]:
     else:
         load_kwargs["device_map"] = "cpu"
 
-    adapter_config = Path(model_ref) / "adapter_config.json"
-    if adapter_config.exists():
+    if is_adapter_reference(model_ref):
         model = AutoPeftModelForCausalLM.from_pretrained(model_ref, **load_kwargs)
     else:
         model = AutoModelForCausalLM.from_pretrained(model_ref, **load_kwargs)

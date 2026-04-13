@@ -6,9 +6,16 @@ from pathlib import Path
 import yaml
 from fastapi.testclient import TestClient
 
-from conarrative.app import build_generalist_command, build_one_click_command, build_training_command, create_app
+from conarrative.app import (
+    build_generalist_command,
+    build_hf_pull_command,
+    build_hf_publish_command,
+    build_one_click_command,
+    build_training_command,
+    create_app,
+)
 from conarrative.config import load_config
-from conarrative.models import GeneralistLoopRequest, OneClickLoopRequest, TrainingRunRequest
+from conarrative.models import GeneralistLoopRequest, HFPullRequest, HFPublishRequest, OneClickLoopRequest, TrainingRunRequest
 
 
 def write_test_config(tmp_path: Path) -> Path:
@@ -116,6 +123,38 @@ def test_build_training_command_supports_dry_run() -> None:
     assert "--print-config" in cmd
 
 
+def test_build_hf_commands_support_repo_sync() -> None:
+    publish_cmd = build_hf_publish_command(
+        HFPublishRequest(
+            source_dir="outputs/training_qwen3_4b_sft",
+            repo_id="your-org/conarrative-writer-qwen3-4b-lora",
+            repo_type="model",
+            private=True,
+            exclude_checkpoints=True,
+            ignore_patterns=["*.pt"],
+        )
+    )
+    assert "publish_to_hf.py" in publish_cmd[1]
+    assert publish_cmd[2] == "publish"
+    assert "--private" in publish_cmd
+    assert "--exclude-checkpoints" in publish_cmd
+    assert "--ignore-pattern" in publish_cmd
+
+    pull_cmd = build_hf_pull_command(
+        HFPullRequest(
+            repo_id="your-org/conarrative-critic-qwen3-4b-lora",
+            repo_type="model",
+            local_dir="outputs/hf_download/critic",
+            allow_patterns=["adapter_*"],
+            ignore_patterns=["checkpoint-*"],
+        )
+    )
+    assert "publish_to_hf.py" in pull_cmd[1]
+    assert pull_cmd[2] == "pull"
+    assert "--allow-pattern" in pull_cmd
+    assert "--ignore-pattern" in pull_cmd
+
+
 def test_system_job_endpoints_submit_and_complete(tmp_path: Path, monkeypatch) -> None:
     config_path = write_test_config(tmp_path)
     app = create_app(load_config(config_path))
@@ -167,6 +206,30 @@ def test_system_job_endpoints_submit_and_complete(tmp_path: Path, monkeypatch) -
     assert training.status_code == 200
     training_job = wait_for_job(client, training.json()["id"])
     assert training_job["status"] == "succeeded"
+
+    hf_publish = client.post(
+        "/api/system/jobs/hf-publish",
+        json={
+            "source_dir": "outputs/training_qwen3_4b_sft",
+            "repo_id": "your-org/conarrative-writer-qwen3-4b-lora",
+            "repo_type": "model",
+        },
+    )
+    assert hf_publish.status_code == 200
+    hf_publish_job = wait_for_job(client, hf_publish.json()["id"])
+    assert hf_publish_job["status"] == "succeeded"
+
+    hf_pull = client.post(
+        "/api/system/jobs/hf-pull",
+        json={
+            "repo_id": "your-org/conarrative-critic-qwen3-4b-lora",
+            "repo_type": "model",
+            "local_dir": "outputs/hf_download/critic",
+        },
+    )
+    assert hf_pull.status_code == 200
+    hf_pull_job = wait_for_job(client, hf_pull.json()["id"])
+    assert hf_pull_job["status"] == "succeeded"
 
 
 def test_story_import_and_ui_preset_endpoints(tmp_path: Path) -> None:

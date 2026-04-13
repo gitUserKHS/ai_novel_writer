@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel
 
+from .model_refs import is_adapter_reference
 from .models import (
     BibleContent,
     ConsistencyIssue,
@@ -39,11 +40,6 @@ from .utils import clamp, ensure_dir, extract_json_object, normalize_list, short
 
 
 _LOCAL_ROLE_RUNTIME_CACHE: dict[str, tuple[Any, Any, Any]] = {}
-
-
-def _adapter_checkpoint_exists(path: str | Path) -> bool:
-    resolved = Path(path)
-    return resolved.exists() and (resolved / "adapter_config.json").exists()
 
 
 def _looks_like_local_ollama(base_url: str) -> bool:
@@ -402,6 +398,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         candidate = Path(model_ref).expanduser()
         if candidate.exists():
             return str(candidate.resolve())
+        if "/" in model_ref and is_adapter_reference(model_ref):
+            return model_ref
         return None
 
     def _configured_remote_model_names(self) -> list[str]:
@@ -495,7 +493,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         else:
             load_kwargs["device_map"] = "cpu"
 
-        if _adapter_checkpoint_exists(model_ref):
+        if is_adapter_reference(model_ref):
             model = AutoPeftModelForCausalLM.from_pretrained(model_ref, **load_kwargs)
         else:
             model = AutoModelForCausalLM.from_pretrained(model_ref, **load_kwargs)

@@ -189,9 +189,41 @@ The web UI now ships with:
 - runtime preset buttons for `mock`, `qwen native`, and local critic/world-model flows
 - saved browser-side presets for runtime, one-click, generalist, and training forms
 - browser-side launch panels for `one-click loop`, `generalist loop`, and direct `train_qlora.py` jobs
+- browser-side launch panels for `HF publish` and `HF pull` jobs
 - automation job summary cards with parsed JSON result previews
 - a scene inspector that shows accepted text, candidate scores, and raw JSON side by side
 - a clearer export / evaluate / training-bundle workflow
+
+## Sharing With Hugging Face
+
+For collaboration, the practical sharing unit is a LoRA adapter rather than a merged full model.
+
+This repository can now:
+
+- load a local adapter directory or a Hugging Face adapter repo id directly in `role_models`
+- publish a local adapter or dataset folder to Hugging Face Hub
+- pull a model or dataset snapshot from Hugging Face Hub into a local directory
+
+Install the extra dependency:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install huggingface_hub
+```
+
+Or with the existing training extra:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --no-build-isolation -e ".[dev,training]"
+```
+
+Examples:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\publish_to_hf.py publish --source-dir outputs\training_qwen3_4b_critic_consistency --repo-id your-org/conarrative-critic-qwen3-4b-lora --repo-type model --private --exclude-checkpoints
+.\.venv\Scripts\python.exe scripts\publish_to_hf.py pull --repo-id your-org/conarrative-critic-qwen3-4b-lora --repo-type model --local-dir outputs\hf_download\critic
+```
+
+Once pulled, point `role_models.consistency_critic` at the downloaded directory, or use the Hub repo id directly for adapter repos.
 
 ## Tests
 

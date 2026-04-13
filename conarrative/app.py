@@ -21,6 +21,8 @@ from .models import (
     BibleContent,
     GeneralistLoopRequest,
     HealthOut,
+    HFPullRequest,
+    HFPublishRequest,
     OneClickLoopRequest,
     OutlineGenerateRequest,
     RuntimeSettings,
@@ -145,6 +147,55 @@ def build_training_command(payload: TrainingRunRequest) -> List[str]:
             command += ["--model-name-or-path", payload.model_name_or_path]
     _maybe_append_flag(command, payload.dry_run, "--dry-run")
     _maybe_append_flag(command, payload.print_config, "--print-config")
+    return command
+
+
+def build_hf_publish_command(payload: HFPublishRequest) -> List[str]:
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "publish_to_hf.py"),
+        "publish",
+        "--source-dir",
+        str(_resolve_repo_path(payload.source_dir, must_exist=True, allow_directory=True)),
+        "--repo-id",
+        payload.repo_id,
+        "--repo-type",
+        payload.repo_type,
+    ]
+    if payload.path_in_repo:
+        command += ["--path-in-repo", payload.path_in_repo]
+    if payload.revision:
+        command += ["--revision", payload.revision]
+    if payload.commit_message:
+        command += ["--commit-message", payload.commit_message]
+    for pattern in payload.ignore_patterns:
+        if pattern:
+            command += ["--ignore-pattern", pattern]
+    _maybe_append_flag(command, payload.private, "--private")
+    _maybe_append_flag(command, payload.exclude_checkpoints, "--exclude-checkpoints")
+    return command
+
+
+def build_hf_pull_command(payload: HFPullRequest) -> List[str]:
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "publish_to_hf.py"),
+        "pull",
+        "--repo-id",
+        payload.repo_id,
+        "--repo-type",
+        payload.repo_type,
+        "--local-dir",
+        str(_resolve_repo_path(payload.local_dir, must_exist=False, allow_directory=True)),
+    ]
+    if payload.revision:
+        command += ["--revision", payload.revision]
+    for pattern in payload.allow_patterns:
+        if pattern:
+            command += ["--allow-pattern", pattern]
+    for pattern in payload.ignore_patterns:
+        if pattern:
+            command += ["--ignore-pattern", pattern]
     return command
 
 
@@ -457,6 +508,26 @@ def create_app(config: AppConfig) -> FastAPI:
             return run_process_job(command, emit)
 
         job = jobs.submit("training_run", None, runner)
+        return job.model_dump()
+
+    @app.post("/api/system/jobs/hf-publish")
+    def submit_hf_publish_job(payload: HFPublishRequest) -> Dict[str, Any]:
+        command = build_hf_publish_command(payload)
+
+        def runner(emit):
+            return run_process_job(command, emit)
+
+        job = jobs.submit("hf_publish", None, runner)
+        return job.model_dump()
+
+    @app.post("/api/system/jobs/hf-pull")
+    def submit_hf_pull_job(payload: HFPullRequest) -> Dict[str, Any]:
+        command = build_hf_pull_command(payload)
+
+        def runner(emit):
+            return run_process_job(command, emit)
+
+        job = jobs.submit("hf_pull", None, runner)
         return job.model_dump()
 
     return app
