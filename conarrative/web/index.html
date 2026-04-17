@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CoNarrative Studio</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-badge">Co</div>
+          <div>
+            <h1>CoNarrative Studio</h1>
+            <p>로컬 장편 소설 제작 스튜디오</p>
+          </div>
+        </div>
+
+        <section class="card compact">
+          <div class="section-head">
+            <h2>백엔드 상태</h2>
+            <button id="refresh-health-btn" class="ghost-btn">새로고침</button>
+          </div>
+          <div id="health-panel" class="stack small-text muted">불러오는 중…</div>
+        </section>
+
+        <section class="card grow">
+          <div class="section-head">
+            <h2>스토리 목록</h2>
+            <button id="refresh-stories-btn" class="ghost-btn">갱신</button>
+          </div>
+          <div id="story-list" class="story-list"></div>
+        </section>
+      </aside>
+
+      <main class="main-area">
+        <section class="hero card">
+          <div>
+            <h2>실사용용 로컬 스토리 파이프라인</h2>
+            <p>
+              스토리 생성은 scene 단위로 돌고, Story Bible / State Tracker / Narrative KG를 분리해
+              관리해. 초안 후보 → critic → revision → memory update 순서로 진행돼.
+            </p>
+          </div>
+          <div class="hero-actions">
+            <button id="open-new-story-btn" class="primary-btn">새 스토리 만들기</button>
+            <button id="export-btn" class="secondary-btn" disabled>Markdown 내보내기</button>
+            <button id="evaluate-btn" class="secondary-btn" disabled>평가 리포트 생성</button>
+          </div>
+        </section>
+
+        <div class="workspace-grid">
+          <section class="card">
+            <div class="section-head">
+              <h2>스토리 메타</h2>
+              <span id="selected-story-badge" class="pill">선택 안 됨</span>
+            </div>
+            <form id="story-form" class="stack">
+              <label>제목<input name="title" required /></label>
+              <label>장르<input name="genre" /></label>
+              <label>톤<input name="tone" /></label>
+              <label>주제(쉼표 구분)<input name="themes" /></label>
+              <label>캐릭터(쉼표 구분)<input name="characters" /></label>
+              <label>금지 사실/룰(쉼표 구분)<input name="forbidden_facts" /></label>
+              <label>목표 scene 수<input name="target_length_scenes" type="number" min="1" max="200" /></label>
+              <label>프레미스<textarea name="premise" rows="4"></textarea></label>
+              <label>메모<textarea name="notes" rows="3"></textarea></label>
+              <div class="row-actions">
+                <button type="submit" class="primary-btn">스토리 저장</button>
+                <button type="button" id="clear-story-form-btn" class="ghost-btn">폼 비우기</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h2>Story Bible</h2>
+              <button id="save-bible-btn" class="primary-btn" disabled>바이블 저장</button>
+            </div>
+            <div class="two-col">
+              <label>Static facts<textarea id="bible-static-facts" rows="6"></textarea></label>
+              <label>Rules / forbidden facts<textarea id="bible-rules" rows="6"></textarea></label>
+              <label>Motifs<textarea id="bible-motifs" rows="5"></textarea></label>
+              <label>Voice notes<textarea id="bible-voice-notes" rows="5"></textarea></label>
+            </div>
+          </section>
+
+          <section class="card wide">
+            <div class="section-head">
+              <h2>Outline Planner</h2>
+              <div class="inline-tools">
+                <label class="inline-field">scene 수 <input id="outline-count" type="number" value="6" min="1" max="20" /></label>
+                <button id="generate-outline-btn" class="primary-btn" disabled>아웃라인 생성</button>
+              </div>
+            </div>
+            <div id="outline-list" class="outline-list muted">스토리를 선택하면 outline을 불러와.</div>
+          </section>
+
+          <section class="card wide">
+            <div class="section-head">
+              <h2>Scene Composer</h2>
+              <button id="generate-scene-btn" class="primary-btn" disabled>scene 생성</button>
+            </div>
+            <form id="scene-form" class="stack">
+              <div class="two-col">
+                <label>장면 제목<input name="title" /></label>
+                <label>POV<input name="pov" required /></label>
+                <label>Goal<input name="goal" required /></label>
+                <label>Location<input name="location" required /></label>
+                <label>Time label<input name="time_label" required /></label>
+                <label>Desired words<input name="desired_length_words" type="number" min="250" max="3000" value="900" /></label>
+                <label>Must include (쉼표)<input name="must_include" /></label>
+                <label>Must avoid (쉼표)<input name="must_avoid" /></label>
+                <label>Emotion targets (쉼표)<input name="emotion_targets" /></label>
+                <label>Outline card id<input name="outline_card_id" readonly /></label>
+              </div>
+              <label>장면 요청<textarea name="summary_request" rows="4" required></textarea></label>
+              <label>Beats (줄바꿈 구분)<textarea name="beats" rows="4"></textarea></label>
+            </form>
+            <div class="job-panel">
+              <div class="section-head slim">
+                <h3>작업 로그</h3>
+                <span id="job-status-pill" class="pill subtle">대기 중</span>
+              </div>
+              <div id="job-log" class="log-box"></div>
+            </div>
+          </section>
+
+          <section class="card wide">
+            <div class="section-head">
+              <h2>Generated Scenes</h2>
+              <span id="scene-count-pill" class="pill">0 scenes</span>
+            </div>
+            <div class="scenes-layout">
+              <div id="scene-list" class="scene-list"></div>
+              <article id="scene-detail" class="scene-detail muted">
+                생성된 장면을 클릭하면 여기서 본문, critic, revision, candidate 정보를 볼 수 있어.
+              </article>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h2>Memory / KG</h2>
+              <button id="refresh-memory-btn" class="ghost-btn" disabled>갱신</button>
+            </div>
+            <div class="three-col">
+              <div>
+                <h3>State Snapshot</h3>
+                <pre id="state-viewer" class="code-box">{}</pre>
+              </div>
+              <div>
+                <h3>Dataset Pools</h3>
+                <pre id="dataset-viewer" class="code-box">{}</pre>
+              </div>
+              <div>
+                <h3>KG Edges</h3>
+                <pre id="kg-viewer" class="code-box">[]</pre>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h2>Artifacts</h2>
+              <button id="refresh-artifacts-btn" class="ghost-btn" disabled>갱신</button>
+            </div>
+            <div id="artifact-list" class="artifact-list muted">아직 생성된 파일이 없어.</div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h2>로컬 모델 설정</h2>
+              <button id="test-settings-btn" class="ghost-btn">연결 테스트</button>
+            </div>
+            <form id="settings-form" class="stack">
+              <label>Provider
+                <select name="provider">
+                  <option value="mock">mock</option>
+                  <option value="openai_compatible">openai_compatible</option>
+                </select>
+              </label>
+              <label>Base URL<input name="base_url" /></label>
+              <label>Model<input name="model" /></label>
+              <label>API key<input name="api_key" /></label>
+              <div class="two-col">
+                <label>Timeout seconds<input name="timeout_seconds" type="number" min="10" max="1200" /></label>
+                <label>Candidate count<input name="candidate_count" type="number" min="1" max="4" /></label>
+              </div>
+              <div class="two-col">
+                <label>Planner temp<input name="temperature_planner" type="number" step="0.05" min="0" max="2" /></label>
+                <label>Writer temp<input name="temperature_writer" type="number" step="0.05" min="0" max="2" /></label>
+                <label>Critic temp<input name="temperature_critic" type="number" step="0.05" min="0" max="2" /></label>
+                <label>Revision temp<input name="temperature_revision" type="number" step="0.05" min="0" max="2" /></label>
+              </div>
+              <div class="row-actions">
+                <button type="submit" class="primary-btn">설정 저장</button>
+                <span id="settings-result" class="muted small-text"></span>
+              </div>
+            </form>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <template id="story-item-template">
+      <button class="story-item"></button>
+    </template>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

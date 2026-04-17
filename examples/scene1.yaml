@@ -1,0 +1,18 @@
+title: 열쇠의 반짝임
+pov: 서윤
+goal: 숨겨진 열쇠의 흔적을 잡는다
+location: 버려진 극장 로비
+time_label: Day 1 / night
+summary_request: 극장 로비에서 서윤이 과거 공연의 흔적과 맞닥뜨리며 다음 장면으로 이어질 질문을 만든다.
+beats:
+  - 서윤이 로비의 냄새와 흔적을 더듬으며 들어온다
+  - 낡은 포스터 뒤에서 이상한 금속성 반짝임을 발견한다
+  - 마지막에는 누군가가 자신을 보고 있었다는 징후를 남긴다
+must_include:
+  - 은색 열쇠고리
+must_avoid:
+  - instant teleportation
+emotion_targets:
+  - 긴장
+  - 애도
+desired_length_words: 700

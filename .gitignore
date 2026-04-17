@@ -1,0 +1,10 @@
+.venv/
+.venv-review/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+workspace/
+conarrative_studio.egg-info/
+_zip_import_tmp/

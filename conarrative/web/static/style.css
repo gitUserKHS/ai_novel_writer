@@ -1,0 +1,369 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --panel-2: #1f2430;
+  --text: #eef2f7;
+  --muted: #9aa5b1;
+  --accent: #8fb8ff;
+  --accent-2: #7be0c3;
+  --danger: #ff8080;
+  --border: rgba(255, 255, 255, 0.08);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: linear-gradient(180deg, #0f1115 0%, #121722 100%);
+  color: var(--text);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0f131a;
+  color: var(--text);
+  padding: 0.7rem 0.85rem;
+}
+
+textarea {
+  resize: vertical;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid var(--border);
+  padding: 1.25rem;
+  background: rgba(15, 17, 21, 0.82);
+  backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.brand-badge {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #081019;
+  font-weight: 800;
+  font-size: 1.1rem;
+}
+
+.brand h1 {
+  font-size: 1.15rem;
+}
+
+.brand p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 0.2rem;
+}
+
+.main-area {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.hero p {
+  color: var(--muted);
+  max-width: 70ch;
+  margin-top: 0.35rem;
+}
+
+.hero-actions,
+.row-actions,
+.inline-tools {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.primary-btn,
+.secondary-btn,
+.ghost-btn {
+  border-radius: 10px;
+  border: 1px solid transparent;
+  padding: 0.7rem 1rem;
+  transition: 0.18s ease;
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #081019;
+  font-weight: 700;
+}
+
+.secondary-btn {
+  background: #0d1420;
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.ghost-btn {
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--border);
+}
+
+.primary-btn:hover,
+.secondary-btn:hover,
+.ghost-btn:hover,
+.story-item:hover,
+.outline-card button:hover,
+.scene-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.card {
+  background: linear-gradient(180deg, rgba(28, 32, 42, 0.92), rgba(22, 25, 32, 0.94));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.card.compact {
+  padding: 0.9rem;
+}
+
+.card.grow {
+  flex: 1;
+  min-height: 240px;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.card.wide {
+  grid-column: 1 / -1;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.section-head.slim {
+  margin-bottom: 0.45rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.three-col {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.story-list,
+.outline-list,
+.scene-list,
+.artifact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.story-item,
+.scene-card,
+.outline-card,
+.artifact-item {
+  width: 100%;
+  text-align: left;
+  background: rgba(11, 15, 22, 0.9);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem;
+}
+
+.story-item.active,
+.scene-card.active {
+  border-color: rgba(143, 184, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(143, 184, 255, 0.35) inset;
+}
+
+.small-text {
+  font-size: 0.87rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.pill.subtle {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-direction: row;
+}
+
+.inline-field input {
+  width: 82px;
+}
+
+.job-panel {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.85rem;
+}
+
+.log-box,
+.code-box {
+  background: rgba(8, 10, 14, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88rem;
+}
+
+.scenes-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 0.9rem;
+}
+
+.scene-detail {
+  background: rgba(8, 10, 14, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem;
+  min-height: 320px;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
+.outline-card {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.outline-meta,
+.scene-meta,
+.artifact-meta {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.outline-card button,
+.artifact-item a {
+  margin-top: 0.2rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+pre {
+  margin: 0;
+}
+
+@media (max-width: 1200px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .workspace-grid,
+  .three-col,
+  .two-col,
+  .scenes-layout {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,28 @@
+app_name: CoNarrative Studio
+backend:
+  provider: mock
+  base_url: http://127.0.0.1:8080/v1
+  model: mock-local
+  api_key: not-needed
+  timeout_seconds: 180
+  temperature_planner: 0.2
+  temperature_writer: 0.85
+  temperature_critic: 0.2
+  temperature_revision: 0.4
+  candidate_count: 3
+server:
+  host: 127.0.0.1
+  port: 8000
+workspace:
+  root: ./workspace
+  database_path: ./workspace/conarrative.db
+  exports_dir: ./workspace/exports
+  runtime_settings_path: ./workspace/runtime_settings.json
+orchestration:
+  recent_scene_memory: 3
+  candidate_count: 3
+  auto_revision: true
+  max_revision_passes: 1
+  keep_candidate_text: true
+  creativity_weight: 0.45
+  consistency_weight: 0.55
