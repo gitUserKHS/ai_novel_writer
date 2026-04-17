@@ -2,48 +2,41 @@ const uiState = {
   stories: [],
   selectedStoryId: null,
   selectedSceneId: null,
+  storyDetail: null,
   scenes: [],
   outline: [],
   artifacts: [],
-  currentJobId: null,
-  jobTimer: null,
+  state: {},
+  datasets: {},
+  kg: [],
 };
 
 const els = {
-  healthPanel: document.getElementById("health-panel"),
+  healthPill: document.getElementById("health-pill"),
+  refreshBtn: document.getElementById("refresh-btn"),
+  quickstartPrompt: document.getElementById("quickstart-prompt"),
+  quickstartSceneCount: document.getElementById("quickstart-scene-count"),
+  quickstartWordCount: document.getElementById("quickstart-word-count"),
+  quickstartBtn: document.getElementById("quickstart-btn"),
+  quickstartNote: document.getElementById("quickstart-note"),
   storyList: document.getElementById("story-list"),
-  storyForm: document.getElementById("story-form"),
-  clearStoryFormBtn: document.getElementById("clear-story-form-btn"),
-  selectedStoryBadge: document.getElementById("selected-story-badge"),
-  saveBibleBtn: document.getElementById("save-bible-btn"),
-  bibleStaticFacts: document.getElementById("bible-static-facts"),
-  bibleRules: document.getElementById("bible-rules"),
-  bibleMotifs: document.getElementById("bible-motifs"),
-  bibleVoiceNotes: document.getElementById("bible-voice-notes"),
-  generateOutlineBtn: document.getElementById("generate-outline-btn"),
-  outlineCount: document.getElementById("outline-count"),
+  storyTitle: document.getElementById("story-title"),
+  storySummary: document.getElementById("story-summary"),
+  continueBtn: document.getElementById("continue-btn"),
+  exportBtn: document.getElementById("export-btn"),
+  evaluateBtn: document.getElementById("evaluate-btn"),
   outlineList: document.getElementById("outline-list"),
-  sceneForm: document.getElementById("scene-form"),
-  generateSceneBtn: document.getElementById("generate-scene-btn"),
-  jobLog: document.getElementById("job-log"),
-  jobStatusPill: document.getElementById("job-status-pill"),
+  sceneCount: document.getElementById("scene-count"),
   sceneList: document.getElementById("scene-list"),
   sceneDetail: document.getElementById("scene-detail"),
-  sceneCountPill: document.getElementById("scene-count-pill"),
+  storyStats: document.getElementById("story-stats"),
+  artifactList: document.getElementById("artifact-list"),
+  settingsForm: document.getElementById("settings-form"),
+  testSettingsBtn: document.getElementById("test-settings-btn"),
+  settingsResult: document.getElementById("settings-result"),
   stateViewer: document.getElementById("state-viewer"),
   datasetViewer: document.getElementById("dataset-viewer"),
   kgViewer: document.getElementById("kg-viewer"),
-  artifactList: document.getElementById("artifact-list"),
-  refreshArtifactsBtn: document.getElementById("refresh-artifacts-btn"),
-  refreshMemoryBtn: document.getElementById("refresh-memory-btn"),
-  exportBtn: document.getElementById("export-btn"),
-  evaluateBtn: document.getElementById("evaluate-btn"),
-  settingsForm: document.getElementById("settings-form"),
-  settingsResult: document.getElementById("settings-result"),
-  refreshHealthBtn: document.getElementById("refresh-health-btn"),
-  refreshStoriesBtn: document.getElementById("refresh-stories-btn"),
-  testSettingsBtn: document.getElementById("test-settings-btn"),
-  openNewStoryBtn: document.getElementById("open-new-story-btn"),
 };
 
 async function api(url, options = {}) {
@@ -74,132 +67,54 @@ function escapeHtml(text) {
     .replaceAll("'", "&#039;");
 }
 
-function splitCsv(value) {
-  return String(value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+function renderEmptyStoryState() {
+  uiState.storyDetail = null;
+  uiState.scenes = [];
+  uiState.outline = [];
+  uiState.artifacts = [];
+  uiState.state = {};
+  uiState.datasets = {};
+  uiState.kg = [];
+  els.storyTitle.textContent = "스토리를 선택하거나 새로 시작하세요";
+  els.storySummary.textContent = "왼쪽 목록에서 기존 스토리를 열거나 위에서 프롬프트 한 줄로 새 스토리를 시작할 수 있습니다.";
+  els.outlineList.innerHTML = `<div class="empty-state">빠른 시작을 실행하면 여기에 아웃라인이 생깁니다.</div>`;
+  els.sceneList.innerHTML = `<div class="empty-state">아직 생성된 장면이 없습니다.</div>`;
+  els.sceneDetail.innerHTML = `장면을 선택하면 본문이 여기 표시됩니다.`;
+  els.storyStats.innerHTML = `<div class="empty-state">선택된 스토리가 없습니다.</div>`;
+  els.artifactList.innerHTML = `<div class="empty-state">아직 생성된 파일이 없습니다.</div>`;
+  els.stateViewer.textContent = "{}";
+  els.datasetViewer.textContent = "{}";
+  els.kgViewer.textContent = "[]";
+  els.sceneCount.textContent = "0개";
+  updateStoryButtons(false);
 }
 
-function splitLines(value) {
-  return String(value || "")
-    .split(/\n+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+function updateStoryButtons(enabled) {
+  els.continueBtn.disabled = !enabled;
+  els.exportBtn.disabled = !enabled;
+  els.evaluateBtn.disabled = !enabled;
 }
 
-function setStoryMode(mode) {
-  els.storyForm.dataset.mode = mode;
-}
-
-function getStoryMode() {
-  return els.storyForm.dataset.mode || "create";
-}
-
-function formToStoryPayload() {
-  const form = new FormData(els.storyForm);
-  return {
-    title: form.get("title") || "Untitled Story",
-    genre: form.get("genre") || "literary fiction",
-    tone: form.get("tone") || "lyrical and emotionally grounded",
-    themes: splitCsv(form.get("themes")),
-    characters: splitCsv(form.get("characters")),
-    forbidden_facts: splitCsv(form.get("forbidden_facts")),
-    target_length_scenes: Number(form.get("target_length_scenes") || 12),
-    premise: form.get("premise") || "",
-    notes: form.get("notes") || "",
-  };
-}
-
-function fillStoryForm(story) {
-  els.storyForm.elements.title.value = story.title || "";
-  els.storyForm.elements.genre.value = story.genre || "";
-  els.storyForm.elements.tone.value = story.tone || "";
-  els.storyForm.elements.themes.value = (story.themes || []).join(", ");
-  els.storyForm.elements.characters.value = (story.characters || []).join(", ");
-  els.storyForm.elements.forbidden_facts.value = (story.forbidden_facts || []).join(", ");
-  els.storyForm.elements.target_length_scenes.value = story.target_length_scenes || 12;
-  els.storyForm.elements.premise.value = story.premise || "";
-  els.storyForm.elements.notes.value = story.notes || "";
-}
-
-function clearStoryForm() {
-  els.storyForm.reset();
-  els.storyForm.elements.target_length_scenes.value = 12;
-  els.selectedStoryBadge.textContent = "새 스토리";
-  setStoryMode("create");
-}
-
-function fillBible(bible) {
-  els.bibleStaticFacts.value = (bible.static_facts || []).join("\n");
-  els.bibleRules.value = (bible.rules || []).join("\n");
-  els.bibleMotifs.value = (bible.motifs || []).join("\n");
-  els.bibleVoiceNotes.value = (bible.voice_notes || []).join("\n");
-}
-
-function biblePayload() {
-  return {
-    static_facts: splitLines(els.bibleStaticFacts.value),
-    rules: splitLines(els.bibleRules.value),
-    motifs: splitLines(els.bibleMotifs.value),
-    voice_notes: splitLines(els.bibleVoiceNotes.value),
-    reference_snippets: [],
-  };
-}
-
-function scenePayload() {
-  const form = new FormData(els.sceneForm);
-  return {
-    title: form.get("title") || "",
-    pov: form.get("pov") || "",
-    goal: form.get("goal") || "",
-    location: form.get("location") || "",
-    time_label: form.get("time_label") || "",
-    summary_request: form.get("summary_request") || "",
-    beats: splitLines(form.get("beats")),
-    must_include: splitCsv(form.get("must_include")),
-    must_avoid: splitCsv(form.get("must_avoid")),
-    emotion_targets: splitCsv(form.get("emotion_targets")),
-    desired_length_words: Number(form.get("desired_length_words") || 900),
-    outline_card_id: form.get("outline_card_id") || null,
-  };
-}
-
-function fillSceneFormFromOutline(card) {
-  els.sceneForm.elements.title.value = card.title || "";
-  els.sceneForm.elements.pov.value = card.pov || "";
-  els.sceneForm.elements.goal.value = card.goal || "";
-  els.sceneForm.elements.location.value = card.location || "";
-  els.sceneForm.elements.time_label.value = card.time_label || "";
-  els.sceneForm.elements.summary_request.value = card.summary_request || "";
-  els.sceneForm.elements.beats.value = (card.beats || []).join("\n");
-  els.sceneForm.elements.must_include.value = (card.must_include || []).join(", ");
-  els.sceneForm.elements.must_avoid.value = (card.must_avoid || []).join(", ");
-  els.sceneForm.elements.outline_card_id.value = card.id || "";
-}
-
-function renderHealth(data) {
-  const badge = data.backend_ok ? "🟢" : "🟡";
-  els.healthPanel.innerHTML = `
-    <div>${badge} <strong>${escapeHtml(data.status)}</strong></div>
-    <div>provider: <strong>${escapeHtml(data.provider)}</strong></div>
-    <div>model: <strong>${escapeHtml(data.model)}</strong></div>
-    <div>detail: ${escapeHtml(data.detail || "")}</div>
-  `;
+function renderHealth(health) {
+  const mode = health.backend_ok ? "connected" : "builtin-ready";
+  const detail = health.backend_ok
+    ? `${health.provider} / ${health.model}`
+    : "live model not connected, builtin storyteller still works";
+  els.healthPill.textContent = `${mode}: ${detail}`;
 }
 
 function renderStories() {
   if (!uiState.stories.length) {
-    els.storyList.innerHTML = `<div class="muted small-text">아직 스토리가 없어. 왼쪽 아래가 아니라 위쪽 메타 카드에서 새로 만들면 돼.</div>`;
+    els.storyList.innerHTML = `<div class="empty-state">아직 저장된 스토리가 없습니다.</div>`;
     return;
   }
   els.storyList.innerHTML = uiState.stories
     .map(
       (story) => `
-        <button class="story-item ${story.id === uiState.selectedStoryId ? "active" : ""}" data-story-id="${escapeHtml(story.id)}">
+        <button class="story-card ${story.id === uiState.selectedStoryId ? "active" : ""}" data-story-id="${escapeHtml(story.id)}">
           <strong>${escapeHtml(story.title)}</strong>
-          <div class="scene-meta">${escapeHtml(story.genre)} · ${escapeHtml(story.tone)}</div>
-          <div class="scene-meta">scene 목표 ${story.target_length_scenes}개</div>
+          <span>${escapeHtml(story.genre)}</span>
+          <span>${escapeHtml(story.tone)}</span>
         </button>
       `,
     )
@@ -209,290 +124,285 @@ function renderStories() {
   });
 }
 
-function renderOutline(cards) {
-  uiState.outline = cards || [];
+function renderSummary() {
+  const detail = uiState.storyDetail;
+  if (!detail) {
+    renderEmptyStoryState();
+    return;
+  }
+  const story = detail.story;
+  const themes = (story.themes || []).join(", ") || "자동 추출 없음";
+  const characters = (story.characters || []).join(", ") || "자동 기본값";
+  els.storyTitle.textContent = story.title;
+  els.storySummary.innerHTML = `
+    <p>${escapeHtml(story.premise)}</p>
+    <div class="summary-meta">
+      <span>장르: ${escapeHtml(story.genre)}</span>
+      <span>톤: ${escapeHtml(story.tone)}</span>
+      <span>테마: ${escapeHtml(themes)}</span>
+      <span>인물: ${escapeHtml(characters)}</span>
+    </div>
+  `;
+}
+
+function renderOutline() {
   if (!uiState.outline.length) {
-    els.outlineList.innerHTML = `<div class="muted small-text">아직 outline이 없어. scene 수를 정하고 생성 버튼을 눌러줘.</div>`;
+    els.outlineList.innerHTML = `<div class="empty-state">아직 아웃라인이 없습니다.</div>`;
     return;
   }
   els.outlineList.innerHTML = uiState.outline
     .map(
-      (card) => `
-      <div class="outline-card">
-        <div>
-          <strong>${escapeHtml(card.title)}</strong>
-          <div class="outline-meta">${escapeHtml(card.time_label)} · ${escapeHtml(card.location)} · ${escapeHtml(card.status)}</div>
-        </div>
-        <div>${escapeHtml(card.summary_request)}</div>
-        <div class="outline-meta">POV ${escapeHtml(card.pov)} / Goal ${escapeHtml(card.goal)}</div>
-        <button class="secondary-btn" data-outline-id="${escapeHtml(card.id || "")}">scene 폼에 불러오기</button>
-      </div>
-    `,
+      (card, index) => `
+        <article class="outline-card ${card.status === "used" ? "used" : ""}">
+          <div class="outline-order">${index + 1}</div>
+          <div>
+            <h3>${escapeHtml(card.title)}</h3>
+            <p>${escapeHtml(card.summary_request)}</p>
+            <div class="outline-meta">
+              <span>${escapeHtml(card.time_label)}</span>
+              <span>${escapeHtml(card.location)}</span>
+              <span>${escapeHtml(card.status)}</span>
+            </div>
+          </div>
+        </article>
+      `,
     )
     .join("");
-  els.outlineList.querySelectorAll("[data-outline-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const card = uiState.outline.find((item) => item.id === button.dataset.outlineId);
-      if (card) fillSceneFormFromOutline(card);
-    });
-  });
 }
 
 function renderScenes() {
-  els.sceneCountPill.textContent = `${uiState.scenes.length} scenes`;
+  els.sceneCount.textContent = `${uiState.scenes.length}개`;
   if (!uiState.scenes.length) {
-    els.sceneList.innerHTML = `<div class="muted small-text">아직 생성된 scene이 없어.</div>`;
-    els.sceneDetail.textContent = "scene 생성 후 상세 정보를 여기서 확인할 수 있어.";
+    els.sceneList.innerHTML = `<div class="empty-state">아직 생성된 장면이 없습니다.</div>`;
+    els.sceneDetail.innerHTML = `장면을 선택하면 본문이 여기 표시됩니다.`;
     return;
+  }
+  if (!uiState.selectedSceneId || !uiState.scenes.some((scene) => scene.id === uiState.selectedSceneId)) {
+    uiState.selectedSceneId = uiState.scenes[uiState.scenes.length - 1].id;
   }
   els.sceneList.innerHTML = uiState.scenes
     .map(
       (scene) => `
-      <button class="scene-card ${scene.id === uiState.selectedSceneId ? "active" : ""}" data-scene-id="${escapeHtml(scene.id)}">
-        <strong>Scene ${scene.scene_index}: ${escapeHtml(scene.title)}</strong>
-        <div class="scene-meta">${escapeHtml(scene.time_label)} · ${escapeHtml(scene.location)}</div>
-        <div class="scene-meta">${escapeHtml(scene.summary)}</div>
-      </button>
-    `,
+        <button class="scene-card ${scene.id === uiState.selectedSceneId ? "active" : ""}" data-scene-id="${escapeHtml(scene.id)}">
+          <strong>Scene ${scene.scene_index}</strong>
+          <span>${escapeHtml(scene.title)}</span>
+          <span>${escapeHtml(scene.time_label)}</span>
+        </button>
+      `,
     )
     .join("");
   els.sceneList.querySelectorAll("[data-scene-id]").forEach((button) => {
     button.addEventListener("click", () => {
       uiState.selectedSceneId = button.dataset.sceneId;
       renderScenes();
-      const scene = uiState.scenes.find((item) => item.id === uiState.selectedSceneId);
-      renderSceneDetail(scene);
     });
   });
-  if (!uiState.selectedSceneId) {
-    uiState.selectedSceneId = uiState.scenes[uiState.scenes.length - 1].id;
-  }
-  const selected = uiState.scenes.find((item) => item.id === uiState.selectedSceneId) || uiState.scenes[uiState.scenes.length - 1];
+  const selected = uiState.scenes.find((scene) => scene.id === uiState.selectedSceneId);
   renderSceneDetail(selected);
 }
 
 function renderSceneDetail(scene) {
   if (!scene) {
-    els.sceneDetail.textContent = "상세 정보가 없어.";
+    els.sceneDetail.innerHTML = `장면을 선택하면 본문이 여기 표시됩니다.`;
     return;
   }
-  const candidateSections = (scene.candidates || [])
+  const candidateMarkup = (scene.candidates || [])
     .map(
-      (cand) => `
-      <details>
-        <summary>Candidate ${cand.candidate_index} · score ${cand.score} ${cand.accepted ? "(accepted)" : ""}</summary>
-        <pre class="code-box">${escapeHtml(cand.text)}</pre>
-      </details>
-    `,
+      (candidate) => `
+        <details class="candidate-block">
+          <summary>Candidate ${candidate.candidate_index} / score ${candidate.score}</summary>
+          <pre class="code-box inline-box">${escapeHtml(candidate.text)}</pre>
+        </details>
+      `,
     )
     .join("");
   els.sceneDetail.innerHTML = `
-    <h3>Scene ${scene.scene_index}: ${escapeHtml(scene.title)}</h3>
-    <p class="scene-meta">POV ${escapeHtml(scene.pov)} · ${escapeHtml(scene.time_label)} · ${escapeHtml(scene.location)}</p>
-    <p class="scene-meta">Goal: ${escapeHtml(scene.goal)}</p>
-    <h4>Accepted text</h4>
+    <h3>${escapeHtml(scene.title)}</h3>
+    <p class="scene-copy">${escapeHtml(scene.summary)}</p>
+    <div class="summary-meta">
+      <span>POV: ${escapeHtml(scene.pov)}</span>
+      <span>장소: ${escapeHtml(scene.location)}</span>
+      <span>시간: ${escapeHtml(scene.time_label)}</span>
+    </div>
     <pre class="code-box">${escapeHtml(scene.accepted_text)}</pre>
-    <h4>Plan</h4>
-    <pre class="code-box">${escapeHtml(JSON.stringify(scene.plan, null, 2))}</pre>
-    <h4>Consistency</h4>
-    <pre class="code-box">${escapeHtml(JSON.stringify(scene.consistency, null, 2))}</pre>
-    <h4>Creativity</h4>
-    <pre class="code-box">${escapeHtml(JSON.stringify(scene.creativity, null, 2))}</pre>
-    <h4>Revision</h4>
-    <pre class="code-box">${escapeHtml(JSON.stringify(scene.revision, null, 2))}</pre>
-    <h4>Candidates</h4>
-    ${candidateSections || `<div class="muted">없음</div>`}
+    <div class="detail-block">
+      <h4>Critic Snapshot</h4>
+      <pre class="code-box inline-box">${escapeHtml(JSON.stringify(scene.consistency, null, 2))}</pre>
+    </div>
+    <div class="detail-block">
+      <h4>Candidate Drafts</h4>
+      ${candidateMarkup || `<div class="empty-state">저장된 후보가 없습니다.</div>`}
+    </div>
   `;
 }
 
-function renderArtifacts(items) {
-  uiState.artifacts = items || [];
-  if (!uiState.artifacts.length) {
-    els.artifactList.innerHTML = `<div class="muted small-text">아직 생성된 artifact가 없어.</div>`;
+function renderStoryStats() {
+  if (!uiState.storyDetail) {
+    els.storyStats.innerHTML = `<div class="empty-state">선택된 스토리가 없습니다.</div>`;
+    return;
+  }
+  const activeThreads = (uiState.state.active_threads || []).length;
+  const resolvedThreads = (uiState.state.resolved_threads || []).length;
+  const stats = [
+    ["현재 장면 수", uiState.scenes.length],
+    ["마지막 장면 번호", uiState.state.last_scene_index || 0],
+    ["열린 떡밥", activeThreads],
+    ["회수된 떡밥", resolvedThreads],
+    ["Accepted 데이터", uiState.datasets.accepted || 0],
+    ["Prompt-only 데이터", uiState.datasets.prompt_only || 0],
+  ];
+  els.storyStats.innerHTML = stats
+    .map(
+      ([label, value]) => `
+        <div class="stat-card">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </div>
+      `,
+    )
+    .join("");
+  els.stateViewer.textContent = JSON.stringify(uiState.state, null, 2);
+  els.datasetViewer.textContent = JSON.stringify(uiState.datasets, null, 2);
+  els.kgViewer.textContent = JSON.stringify(uiState.kg, null, 2);
+}
+
+function renderArtifacts() {
+  if (!uiState.selectedStoryId || !uiState.artifacts.length) {
+    els.artifactList.innerHTML = `<div class="empty-state">아직 생성된 파일이 없습니다.</div>`;
     return;
   }
   els.artifactList.innerHTML = uiState.artifacts
     .map(
       (artifact) => `
-        <div class="artifact-item">
+        <article class="artifact-card">
           <strong>${escapeHtml(artifact.artifact_type)}</strong>
-          <div class="artifact-meta">${escapeHtml(artifact.created_at)} · ${escapeHtml(artifact.path)}</div>
+          <span>${escapeHtml(artifact.created_at)}</span>
           <a href="/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/artifacts/${artifact.id}/download">다운로드</a>
-        </div>
+        </article>
       `,
     )
     .join("");
 }
 
-function renderJob(job) {
-  els.jobStatusPill.textContent = `${job.status} · ${(job.progress * 100).toFixed(0)}%`;
-  const lines = (job.logs || []).map((entry) => `[${entry.time || ""}] ${entry.message}`).join("\n");
-  els.jobLog.textContent = lines || job.message || "대기 중";
-}
-
-function updateStoryDependentButtons(enabled) {
-  [
-    els.saveBibleBtn,
-    els.generateOutlineBtn,
-    els.generateSceneBtn,
-    els.refreshMemoryBtn,
-    els.refreshArtifactsBtn,
-    els.exportBtn,
-    els.evaluateBtn,
-  ].forEach((button) => {
-    button.disabled = !enabled;
-  });
+function setBusy(button, busyText, callback) {
+  return async (...args) => {
+    const previousText = button.textContent;
+    button.disabled = true;
+    button.textContent = busyText;
+    try {
+      await callback(...args);
+    } finally {
+      button.disabled = false;
+      button.textContent = previousText;
+    }
+  };
 }
 
 async function loadHealth() {
-  const data = await api("/api/health");
-  renderHealth(data);
+  const health = await api("/api/health");
+  renderHealth(health);
 }
 
 async function loadSettings() {
   const settings = await api("/api/runtime-settings");
-  for (const [key, value] of Object.entries(settings)) {
+  Object.entries(settings).forEach(([key, value]) => {
     if (els.settingsForm.elements[key]) {
       els.settingsForm.elements[key].value = value;
     }
-  }
+  });
 }
 
 async function loadStories() {
   const data = await api("/api/stories");
   uiState.stories = data.items || [];
-  if (uiState.selectedStoryId && !uiState.stories.find((s) => s.id === uiState.selectedStoryId)) {
-    uiState.selectedStoryId = null;
-  }
   renderStories();
+  if (!uiState.selectedStoryId && uiState.stories.length) {
+    await selectStory(uiState.stories[0].id);
+  }
 }
 
 async function selectStory(storyId) {
   uiState.selectedStoryId = storyId;
-  uiState.selectedSceneId = null;
   renderStories();
-  updateStoryDependentButtons(true);
-  const detail = await api(`/api/stories/${encodeURIComponent(storyId)}`);
-  fillStoryForm(detail.story);
-  fillBible(detail.bible);
-  setStoryMode("update");
-  els.selectedStoryBadge.textContent = storyId;
-  renderOutline(detail.outline || []);
-  await reloadStoryResources();
-}
-
-async function reloadStoryResources() {
-  if (!uiState.selectedStoryId) return;
-  const storyId = encodeURIComponent(uiState.selectedStoryId);
-  const [scenesRes, stateRes, datasetsRes, kgRes, artifactsRes] = await Promise.all([
-    api(`/api/stories/${storyId}/scenes`),
-    api(`/api/stories/${storyId}/state`),
-    api(`/api/stories/${storyId}/datasets`),
-    api(`/api/stories/${storyId}/kg`),
-    api(`/api/stories/${storyId}/artifacts`),
+  updateStoryButtons(true);
+  const storyPath = encodeURIComponent(storyId);
+  const [detail, scenes, state, datasets, kg, artifacts] = await Promise.all([
+    api(`/api/stories/${storyPath}`),
+    api(`/api/stories/${storyPath}/scenes`),
+    api(`/api/stories/${storyPath}/state`),
+    api(`/api/stories/${storyPath}/datasets`),
+    api(`/api/stories/${storyPath}/kg`),
+    api(`/api/stories/${storyPath}/artifacts`),
   ]);
-  uiState.scenes = scenesRes.items || [];
+  uiState.storyDetail = detail;
+  uiState.outline = detail.outline || [];
+  uiState.scenes = scenes.items || [];
+  uiState.state = state;
+  uiState.datasets = datasets;
+  uiState.kg = kg.items || [];
+  uiState.artifacts = artifacts.items || [];
+  renderSummary();
+  renderOutline();
   renderScenes();
-  els.stateViewer.textContent = JSON.stringify(stateRes, null, 2);
-  els.datasetViewer.textContent = JSON.stringify(datasetsRes, null, 2);
-  els.kgViewer.textContent = JSON.stringify(kgRes.items || [], null, 2);
-  renderArtifacts(artifactsRes.items || []);
+  renderStoryStats();
+  renderArtifacts();
 }
 
-async function handleStorySubmit(event) {
-  event.preventDefault();
-  const payload = formToStoryPayload();
-  if (!payload.title || !payload.premise) {
-    alert("제목과 프레미스는 넣어줘.");
+async function handleQuickstart() {
+  const prompt = els.quickstartPrompt.value.trim();
+  if (!prompt) {
+    alert("프롬프트를 입력하세요.");
     return;
   }
-  let story;
-  if (getStoryMode() === "update" && uiState.selectedStoryId) {
-    story = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    });
-  } else {
-    story = await api("/api/stories", { method: "POST", body: JSON.stringify(payload) });
-  }
-  await loadStories();
-  await selectStory(story.id);
-}
-
-async function handleSaveBible() {
-  if (!uiState.selectedStoryId) return;
-  await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/bible`, {
-    method: "PUT",
-    body: JSON.stringify(biblePayload()),
-  });
-  await selectStory(uiState.selectedStoryId);
-}
-
-async function handleGenerateOutline() {
-  if (!uiState.selectedStoryId) return;
-  const count = Number(els.outlineCount.value || 6);
-  const res = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/outline/generate`, {
-    method: "POST",
-    body: JSON.stringify({ scene_count: count }),
-  });
-  renderOutline(res.items || []);
-}
-
-async function handleGenerateScene() {
-  if (!uiState.selectedStoryId) return;
-  const payload = scenePayload();
-  if (!payload.pov || !payload.goal || !payload.location || !payload.time_label || !payload.summary_request) {
-    alert("POV, Goal, Location, Time label, 장면 요청은 꼭 넣어줘.");
-    return;
-  }
-  const job = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/scenes/generate`, {
+  const payload = {
+    prompt,
+    scene_count: Number(els.quickstartSceneCount.value || 4),
+    desired_length_words: Number(els.quickstartWordCount.value || 900),
+  };
+  const result = await api("/api/quickstart", {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  uiState.currentJobId = job.id;
-  renderJob(job);
-  startJobPolling();
+  els.quickstartNote.textContent = result.detail || "스토리를 만들었습니다.";
+  await loadStories();
+  await selectStory(result.story.id);
 }
 
-function stopJobPolling() {
-  if (uiState.jobTimer) {
-    clearInterval(uiState.jobTimer);
-    uiState.jobTimer = null;
+async function handleContinue() {
+  if (!uiState.selectedStoryId) {
+    return;
   }
-}
-
-function startJobPolling() {
-  stopJobPolling();
-  uiState.jobTimer = setInterval(async () => {
-    if (!uiState.currentJobId) return;
-    try {
-      const job = await api(`/api/jobs/${encodeURIComponent(uiState.currentJobId)}`);
-      renderJob(job);
-      if (job.status === "succeeded") {
-        stopJobPolling();
-        await reloadStoryResources();
-      } else if (job.status === "failed") {
-        stopJobPolling();
-        alert("scene 생성이 실패했어. 로그를 확인해줘.");
-      }
-    } catch (error) {
-      stopJobPolling();
-      console.error(error);
-    }
-  }, 1200);
+  const result = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/continue`, {
+    method: "POST",
+    body: JSON.stringify({
+      desired_length_words: Number(els.quickstartWordCount.value || 900),
+    }),
+  });
+  els.quickstartNote.textContent = result.detail || "다음 장면을 만들었습니다.";
+  await loadStories();
+  await selectStory(result.story.id);
 }
 
 async function handleExport() {
-  if (!uiState.selectedStoryId) return;
-  await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/export`, { method: "POST" });
-  await reloadStoryResources();
+  if (!uiState.selectedStoryId) {
+    return;
+  }
+  const result = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/export`, {
+    method: "POST",
+  });
+  await selectStory(uiState.selectedStoryId);
+  els.quickstartNote.textContent = `내보내기 완료: ${result.artifact.path}`;
 }
 
 async function handleEvaluate() {
-  if (!uiState.selectedStoryId) return;
-  const res = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/evaluate`, { method: "POST" });
-  await reloadStoryResources();
-  els.datasetViewer.textContent += `\n\nLatest evaluation:\n${JSON.stringify(res.report, null, 2)}`;
+  if (!uiState.selectedStoryId) {
+    return;
+  }
+  const result = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/evaluate`, {
+    method: "POST",
+  });
+  await selectStory(uiState.selectedStoryId);
+  els.quickstartNote.textContent = `평가 완료: scene ${result.report.scene_count}, consistency ${result.report.average_consistency_score}`;
 }
 
 async function handleSaveSettings(event) {
@@ -510,8 +420,11 @@ async function handleSaveSettings(event) {
     temperature_critic: Number(form.get("temperature_critic") || 0.2),
     temperature_revision: Number(form.get("temperature_revision") || 0.4),
   };
-  await api("/api/runtime-settings", { method: "PUT", body: JSON.stringify(payload) });
-  els.settingsResult.textContent = "저장됨";
+  await api("/api/runtime-settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  els.settingsResult.textContent = "설정을 저장했습니다.";
   await loadHealth();
 }
 
@@ -529,41 +442,32 @@ async function handleTestSettings() {
     temperature_critic: Number(form.get("temperature_critic") || 0.2),
     temperature_revision: Number(form.get("temperature_revision") || 0.4),
   };
-  const res = await api("/api/runtime-settings/test", { method: "POST", body: JSON.stringify(payload) });
-  els.settingsResult.textContent = res.ok ? `연결 성공: ${res.detail}` : `연결 실패: ${res.detail}`;
+  const result = await api("/api/runtime-settings/test", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  els.settingsResult.textContent = result.ok ? `연결 성공: ${result.detail}` : `연결 실패: ${result.detail}`;
   await loadHealth();
 }
 
 function bindEvents() {
-  els.storyForm.addEventListener("submit", handleStorySubmit);
-  els.clearStoryFormBtn.addEventListener("click", () => {
-    uiState.selectedStoryId = null;
-    uiState.selectedSceneId = null;
-    clearStoryForm();
-    renderStories();
-    updateStoryDependentButtons(false);
+  els.refreshBtn.addEventListener("click", async () => {
+    await Promise.all([loadHealth(), loadStories()]);
+    if (uiState.selectedStoryId) {
+      await selectStory(uiState.selectedStoryId);
+    }
   });
-  els.openNewStoryBtn.addEventListener("click", () => {
-    clearStoryForm();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
-  els.saveBibleBtn.addEventListener("click", handleSaveBible);
-  els.generateOutlineBtn.addEventListener("click", handleGenerateOutline);
-  els.generateSceneBtn.addEventListener("click", handleGenerateScene);
-  els.exportBtn.addEventListener("click", handleExport);
-  els.evaluateBtn.addEventListener("click", handleEvaluate);
-  els.refreshArtifactsBtn.addEventListener("click", reloadStoryResources);
-  els.refreshMemoryBtn.addEventListener("click", reloadStoryResources);
+  els.quickstartBtn.addEventListener("click", setBusy(els.quickstartBtn, "생성 중...", handleQuickstart));
+  els.continueBtn.addEventListener("click", setBusy(els.continueBtn, "작성 중...", handleContinue));
+  els.exportBtn.addEventListener("click", setBusy(els.exportBtn, "내보내는 중...", handleExport));
+  els.evaluateBtn.addEventListener("click", setBusy(els.evaluateBtn, "평가 중...", handleEvaluate));
   els.settingsForm.addEventListener("submit", handleSaveSettings);
-  els.refreshHealthBtn.addEventListener("click", loadHealth);
-  els.refreshStoriesBtn.addEventListener("click", loadStories);
-  els.testSettingsBtn.addEventListener("click", handleTestSettings);
+  els.testSettingsBtn.addEventListener("click", setBusy(els.testSettingsBtn, "테스트 중...", handleTestSettings));
 }
 
 async function boot() {
   bindEvents();
-  clearStoryForm();
-  updateStoryDependentButtons(false);
+  renderEmptyStoryState();
   await Promise.all([loadHealth(), loadSettings(), loadStories()]);
 }
 

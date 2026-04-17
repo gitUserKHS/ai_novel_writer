@@ -88,6 +88,67 @@ def test_story_detail_survives_invalid_runtime_settings_file(tmp_path: Path):
     assert settings.json()["candidate_count"] == 2
 
 
+def test_quickstart_creates_story_outline_and_first_scene(tmp_path: Path):
+    config = make_config(tmp_path)
+    runtime_path = Path(config.workspace.runtime_settings_path)
+    runtime_path.write_text(
+        '{"provider":"openai_compatible","base_url":"http://127.0.0.1:1/v1","model":"offline-model"}',
+        encoding="utf-8",
+    )
+
+    app = create_app(config)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/quickstart",
+        json={
+            "prompt": "A closed theater keeps answering questions nobody says aloud.",
+            "scene_count": 4,
+            "desired_length_words": 700,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "mock"
+    assert payload["story"]["title"]
+    assert len(payload["outline"]) == 4
+    assert len(payload["recent_scenes"]) == 1
+    assert payload["state"]["last_scene_index"] == 1
+    assert "built-in storyteller" in payload["detail"]
+
+
+def test_continue_story_uses_next_outline_card(tmp_path: Path):
+    app = create_app(make_config(tmp_path))
+    client = TestClient(app)
+
+    quickstart = client.post(
+        "/api/quickstart",
+        json={
+            "prompt": "A woman receives letters from tomorrow that warn her about one room in her apartment.",
+            "scene_count": 3,
+            "desired_length_words": 650,
+        },
+    )
+    assert quickstart.status_code == 200
+    story_id = quickstart.json()["story"]["id"]
+
+    continued = client.post(
+        f"/api/stories/{story_id}/continue",
+        json={"desired_length_words": 650},
+    )
+
+    assert continued.status_code == 200
+    payload = continued.json()
+    assert len(payload["recent_scenes"]) == 2
+    assert payload["state"]["last_scene_index"] == 2
+
+    outline = client.get(f"/api/stories/{story_id}/outline")
+    assert outline.status_code == 200
+    statuses = [item["status"] for item in outline.json()["items"]]
+    assert statuses[:2] == ["used", "used"]
+
+
 def test_story_flow_end_to_end(tmp_path: Path):
     app = create_app(make_config(tmp_path))
     client = TestClient(app)

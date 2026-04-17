@@ -123,6 +123,12 @@ class OutlineGenerateRequest(BaseModel):
     scene_count: int = Field(default=6, ge=1, le=20)
 
 
+class QuickstartRequest(BaseModel):
+    prompt: str = Field(min_length=8, max_length=4000)
+    scene_count: int = Field(default=4, ge=1, le=12)
+    desired_length_words: int = Field(default=900, ge=250, le=3000)
+
+
 class SceneRequest(BaseModel):
     title: str = ""
     pov: str
@@ -307,6 +313,10 @@ class EvaluationReport(BaseModel):
     notes: List[str] = Field(default_factory=list)
 
 
+class ContinueStoryRequest(BaseModel):
+    desired_length_words: int = Field(default=900, ge=250, le=3000)
+
+
 class ApiEnvelope(BaseModel):
     ok: bool = True
     message: str = ""
@@ -328,6 +338,16 @@ class MemoryBundle(BaseModel):
     state: StoryState
     recent_scenes: List[SceneOut] = Field(default_factory=list)
     outline: List[OutlineCard] = Field(default_factory=list)
+
+
+class QuickstartOut(BaseModel):
+    story: StoryOut
+    bible: BibleContent
+    state: StoryState
+    outline: List[OutlineCard] = Field(default_factory=list)
+    recent_scenes: List[SceneOut] = Field(default_factory=list)
+    provider: ProviderType
+    detail: str = ""
 
 
 class GenerationResult(BaseModel):

@@ -17,14 +17,18 @@ from .jobs import JobManager
 from .llm import build_provider
 from .models import (
     BibleContent,
+    ContinueStoryRequest,
     HealthOut,
     OutlineGenerateRequest,
+    QuickstartOut,
+    QuickstartRequest,
     RuntimeSettings,
     SceneRequest,
     StoryCreate,
     StoryUpdate,
 )
 from .orchestrator import Orchestrator
+from .quickstart import build_story_from_prompt, continue_request_to_words, next_planned_outline_card, outline_to_scene_request, quickstart_settings
 from .runtime_settings import RuntimeSettingsStore
 
 
@@ -89,6 +93,18 @@ def create_app(config: AppConfig) -> FastAPI:
             "outline": [card.model_dump() for card in outline],
         }
 
+    def quickstart_bundle(story_id: str, detail: str) -> Dict[str, Any]:
+        bundle = build_story_bundle(story_id)
+        return QuickstartOut(
+            story=ensure_story(story_id),
+            bible=storage.get_bible(story_id),
+            state=storage.get_latest_state(story_id),
+            outline=storage.list_outline(story_id),
+            recent_scenes=storage.list_scenes(story_id)[-config.orchestration.recent_scene_memory :],
+            provider=quickstart_settings(current_settings())[0].provider,
+            detail=detail,
+        ).model_dump()
+
     @app.get("/", response_class=HTMLResponse)
     def root() -> HTMLResponse:
         return HTMLResponse((web_dir / "index.html").read_text(encoding="utf-8"))
@@ -131,6 +147,17 @@ def create_app(config: AppConfig) -> FastAPI:
     def create_story(payload: StoryCreate) -> Dict[str, Any]:
         story = storage.create_story(payload)
         return story.model_dump()
+
+    @app.post("/api/quickstart")
+    def quickstart_story(payload: QuickstartRequest) -> Dict[str, Any]:
+        story = storage.create_story(build_story_from_prompt(payload))
+        settings, detail = quickstart_settings(current_settings())
+        with orchestrator_context(settings) as orchestrator:
+            outline = orchestrator.generate_outline(story.id, OutlineGenerateRequest(scene_count=payload.scene_count))
+            first_card = next_planned_outline_card(outline)
+            if first_card is not None:
+                orchestrator.run_scene(story.id, outline_to_scene_request(first_card, payload.desired_length_words))
+        return quickstart_bundle(story.id, detail)
 
     @app.get("/api/stories/{story_id}")
     def get_story(story_id: str) -> Dict[str, Any]:
@@ -199,6 +226,18 @@ def create_app(config: AppConfig) -> FastAPI:
         job = storage.get_job(job_id)
         assert job is not None
         return job.model_dump()
+
+    @app.post("/api/stories/{story_id}/continue")
+    def continue_story(story_id: str, payload: ContinueStoryRequest | None = None) -> Dict[str, Any]:
+        ensure_story(story_id)
+        outline = storage.list_outline(story_id)
+        next_card = next_planned_outline_card(outline)
+        if next_card is None:
+            raise HTTPException(status_code=400, detail="No unused outline cards remain for this story.")
+        settings, detail = quickstart_settings(current_settings())
+        with orchestrator_context(settings) as orchestrator:
+            orchestrator.run_scene(story_id, outline_to_scene_request(next_card, continue_request_to_words(payload or ContinueStoryRequest())))
+        return quickstart_bundle(story_id, detail)
 
     @app.get("/api/jobs/{job_id}")
     def get_job(job_id: str) -> Dict[str, Any]:
