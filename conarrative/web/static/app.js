@@ -10,6 +10,10 @@ const uiState = {
   datasets: {},
   kg: [],
   modelCatalog: { options: [], current: null, detail: "" },
+  trainingEnv: null,
+  trainingJobId: null,
+  trainingJob: null,
+  trainingPollTimer: null,
 };
 
 const els = {
@@ -30,6 +34,15 @@ const els = {
   exportBtn: document.getElementById("export-btn"),
   evaluateBtn: document.getElementById("evaluate-btn"),
   deleteStoryBtn: document.getElementById("delete-story-btn"),
+  trainingReadyChip: document.getElementById("training-ready-chip"),
+  trainingSummary: document.getElementById("training-summary"),
+  trainingBaseModel: document.getElementById("training-base-model"),
+  trainingEpochs: document.getElementById("training-epochs"),
+  trainingHfToken: document.getElementById("training-hf-token"),
+  trainingSetupBtn: document.getElementById("training-setup-btn"),
+  trainingStartBtn: document.getElementById("training-start-btn"),
+  trainingTeacherNote: document.getElementById("training-teacher-note"),
+  trainingLog: document.getElementById("training-log"),
   outlineList: document.getElementById("outline-list"),
   sceneCount: document.getElementById("scene-count"),
   sceneList: document.getElementById("scene-list"),
@@ -77,6 +90,8 @@ function updateStoryButtons(enabled) {
   els.exportBtn.disabled = !enabled;
   els.evaluateBtn.disabled = !enabled;
   els.deleteStoryBtn.disabled = !enabled;
+  els.trainingSetupBtn.disabled = !enabled;
+  els.trainingStartBtn.disabled = !enabled;
 }
 
 function renderEmptyStoryState() {
@@ -101,6 +116,7 @@ function renderEmptyStoryState() {
   els.kgViewer.textContent = "[]";
   els.sceneCount.textContent = "0개";
   updateStoryButtons(false);
+  renderTrainingPanel();
 }
 
 function renderHealth(health) {
@@ -292,6 +308,49 @@ function renderArtifacts() {
     .join("");
 }
 
+function renderTrainingPanel() {
+  const env = uiState.trainingEnv;
+  const hasStory = Boolean(uiState.selectedStoryId);
+  const currentTeacher = uiState.modelCatalog?.current
+    ? `${uiState.modelCatalog.current.source} / ${uiState.modelCatalog.current.model}`
+    : "현재 교사 모델 없음";
+  if (!env) {
+    els.trainingReadyChip.textContent = "학습 환경 확인 중";
+    els.trainingSummary.textContent = "학습 환경 상태를 불러오는 중입니다.";
+    els.trainingTeacherNote.textContent = `현재 교사 모델: ${currentTeacher}`;
+    els.trainingLog.textContent = "학습 로그가 여기 표시됩니다.";
+    els.trainingSetupBtn.disabled = true;
+    els.trainingStartBtn.disabled = true;
+    return;
+  }
+  els.trainingReadyChip.textContent = env.ready ? "학습 환경 준비 완료" : "학습 환경 준비 필요";
+  els.trainingSummary.textContent = env.detail || "학습 환경 세부 정보가 없습니다.";
+  els.trainingTeacherNote.textContent = `현재 교사 모델: ${currentTeacher}`;
+  if (uiState.trainingJob && uiState.trainingJob.story_id === uiState.selectedStoryId) {
+    const logs = (uiState.trainingJob.logs || []).map((item) => `[${item.time}] ${item.message}`);
+    const header = [
+      `job: ${uiState.trainingJob.kind}`,
+      `status: ${uiState.trainingJob.status}`,
+      `message: ${uiState.trainingJob.message}`,
+      "",
+    ];
+    els.trainingLog.textContent = header.concat(logs).join("\n");
+  } else {
+    els.trainingLog.textContent = env.ready
+      ? "학습 환경이 준비되었습니다. 스토리를 선택한 뒤 '딸깍 학습 시작'을 누르세요."
+      : "먼저 '학습 환경 자동 준비'를 눌러 학습용 Python 3.12/CUDA 환경을 만드세요.";
+  }
+  els.trainingSetupBtn.disabled = !hasStory;
+  els.trainingStartBtn.disabled = !hasStory;
+}
+
+function stopTrainingJobPolling() {
+  if (uiState.trainingPollTimer) {
+    clearTimeout(uiState.trainingPollTimer);
+    uiState.trainingPollTimer = null;
+  }
+}
+
 function renderModelCatalog() {
   const catalog = uiState.modelCatalog || { options: [], current: null, detail: "" };
   const currentKey = catalog.current ? `${catalog.current.base_url}||${catalog.current.model}` : "mock";
@@ -310,6 +369,11 @@ async function loadHealth() {
   renderHealth(await api("/api/health"));
 }
 
+async function loadTrainingEnvironment() {
+  uiState.trainingEnv = await api("/api/training/environment");
+  renderTrainingPanel();
+}
+
 async function loadSettings() {
   const settings = await api("/api/runtime-settings");
   for (const [key, value] of Object.entries(settings)) {
@@ -322,6 +386,7 @@ async function loadSettings() {
 async function loadModelCatalog() {
   uiState.modelCatalog = await api("/api/runtime-settings/models");
   renderModelCatalog();
+  renderTrainingPanel();
 }
 
 async function loadStories() {
@@ -365,6 +430,7 @@ async function selectStory(storyId) {
   renderScenes();
   renderStoryStats();
   renderArtifacts();
+  renderTrainingPanel();
 }
 
 async function handleQuickstart() {
@@ -456,6 +522,7 @@ async function handleDeleteStory() {
   if (!uiState.selectedStoryId || !uiState.storyDetail) {
     return;
   }
+  stopTrainingJobPolling();
   const storyId = uiState.selectedStoryId;
   const storyTitle = uiState.storyDetail.story?.title || storyId;
   const confirmed = window.confirm(`'${storyTitle}' 스토리를 삭제할까요?\n장면, 아웃라인, 상태, 내보낸 파일도 함께 삭제됩니다.`);
@@ -469,6 +536,63 @@ async function handleDeleteStory() {
   uiState.selectedSceneId = null;
   els.quickstartNote.textContent = `${result.title || storyTitle} 스토리를 삭제했습니다.`;
   await loadStories();
+}
+
+async function pollTrainingJob(jobId) {
+  uiState.trainingJobId = jobId;
+  const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+  uiState.trainingJob = job;
+  renderTrainingPanel();
+  if (job.status === "queued" || job.status === "running") {
+    stopTrainingJobPolling();
+    uiState.trainingPollTimer = setTimeout(() => {
+      pollTrainingJob(jobId).catch((error) => {
+        console.error(error);
+        els.trainingLog.textContent = `학습 job 조회 실패: ${error.message}`;
+      });
+    }, 2500);
+    return;
+  }
+  stopTrainingJobPolling();
+  await loadTrainingEnvironment();
+  if (uiState.selectedStoryId) {
+    await selectStory(uiState.selectedStoryId);
+  } else {
+    renderTrainingPanel();
+  }
+}
+
+async function handleTrainingSetup() {
+  if (!uiState.selectedStoryId) {
+    return;
+  }
+  uiState.trainingJob = null;
+  renderTrainingPanel();
+  const job = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/training/setup`, {
+    method: "POST",
+    body: JSON.stringify({ force_reinstall: false }),
+  });
+  els.quickstartNote.textContent = "학습 환경 준비를 시작했습니다.";
+  await pollTrainingJob(job.id);
+}
+
+async function handleTrainingStart() {
+  if (!uiState.selectedStoryId) {
+    return;
+  }
+  uiState.trainingJob = null;
+  renderTrainingPanel();
+  const job = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/training/auto`, {
+    method: "POST",
+    body: JSON.stringify({
+      base_model: els.trainingBaseModel.value.trim() || "google/gemma-4-E2B-it",
+      hf_token: els.trainingHfToken.value.trim(),
+      epochs: Number(els.trainingEpochs.value || 1.0),
+      use_distillation: true,
+    }),
+  });
+  els.quickstartNote.textContent = "원클릭 학습 job을 시작했습니다.";
+  await pollTrainingJob(job.id);
 }
 
 async function handleSaveSettings(event) {
@@ -530,7 +654,7 @@ function setBusy(button, busyText, callback) {
 
 function bindEvents() {
   els.refreshBtn.addEventListener("click", async () => {
-    await Promise.all([loadHealth(), loadSettings(), loadStories(), loadModelCatalog()]);
+    await Promise.all([loadHealth(), loadSettings(), loadStories(), loadModelCatalog(), loadTrainingEnvironment()]);
     if (uiState.selectedStoryId) {
       await selectStory(uiState.selectedStoryId);
     }
@@ -542,6 +666,8 @@ function bindEvents() {
   els.exportBtn.addEventListener("click", setBusy(els.exportBtn, "내보내는 중...", handleExport));
   els.evaluateBtn.addEventListener("click", setBusy(els.evaluateBtn, "평가 중...", handleEvaluate));
   els.deleteStoryBtn.addEventListener("click", setBusy(els.deleteStoryBtn, "삭제 중...", handleDeleteStory));
+  els.trainingSetupBtn.addEventListener("click", setBusy(els.trainingSetupBtn, "학습 환경 준비 중...", handleTrainingSetup));
+  els.trainingStartBtn.addEventListener("click", setBusy(els.trainingStartBtn, "학습 시작 중...", handleTrainingStart));
   els.modelPicker.addEventListener("change", async () => {
     els.modelPicker.disabled = true;
     try {
@@ -557,7 +683,7 @@ function bindEvents() {
 async function boot() {
   bindEvents();
   renderEmptyStoryState();
-  await Promise.all([loadHealth(), loadSettings(), loadStories(), loadModelCatalog()]);
+  await Promise.all([loadHealth(), loadSettings(), loadStories(), loadModelCatalog(), loadTrainingEnvironment()]);
 }
 
 boot().catch((error) => {

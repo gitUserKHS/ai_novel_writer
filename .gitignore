@@ -6,5 +6,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 workspace/
+configs/workspace/training/
 conarrative_studio.egg-info/
 _zip_import_tmp/

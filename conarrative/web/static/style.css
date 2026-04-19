@@ -255,6 +255,13 @@ p {
   flex-wrap: wrap;
 }
 
+.training-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
 .story-summary {
   display: flex;
   flex-direction: column;
@@ -286,6 +293,17 @@ p {
 
 .scene-panel {
   grid-column: 1 / -1;
+}
+
+.training-panel {
+  grid-column: 1 / -1;
+}
+
+.training-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
 }
 
 .scene-layout {
@@ -379,6 +397,11 @@ p {
   font-family: "IBM Plex Mono", "Consolas", monospace;
   font-size: 0.88rem;
   line-height: 1.55;
+}
+
+.training-log {
+  margin-top: 14px;
+  min-height: 220px;
 }
 
 .inline-box {
@@ -493,6 +516,7 @@ p {
   .workspace,
   .content-grid,
   .advanced-grid,
+  .training-grid,
   .scene-layout,
   .stats-grid {
     grid-template-columns: 1fr;
@@ -511,7 +535,8 @@ p {
 
   .hero,
   .composer-tools,
-  .summary-actions {
+  .summary-actions,
+  .training-actions {
     flex-direction: column;
     align-items: stretch;
   }

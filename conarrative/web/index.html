@@ -133,6 +133,41 @@
               <div id="artifact-list" class="artifact-list empty-state">아직 생성된 파일이 없습니다.</div>
             </section>
 
+            <section class="panel training-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="section-kicker">Training</p>
+                  <h2>딸깍 학습</h2>
+                </div>
+                <div id="training-ready-chip" class="helper-chip">학습 환경 확인 중</div>
+              </div>
+              <p id="training-summary" class="muted">
+                현재 선택한 스토리의 데이터로 학습용 JSONL을 만들고, 연결된 상위 모델이 있으면 증류한 뒤 Gemma 4 E2B LoRA/QLoRA 학습을 시작합니다.
+              </p>
+              <div class="training-grid">
+                <label>
+                  학습 기본 모델
+                  <input id="training-base-model" value="google/gemma-4-E2B-it" />
+                </label>
+                <label>
+                  학습 epoch
+                  <input id="training-epochs" type="number" min="0.05" max="20" step="0.05" value="1.0" />
+                </label>
+                <label>
+                  Hugging Face 토큰
+                  <input id="training-hf-token" type="password" placeholder="Gemma 다운로드에 필요할 수 있음" />
+                </label>
+              </div>
+              <div class="training-actions">
+                <button id="training-setup-btn" class="secondary-btn" type="button" disabled>학습 환경 자동 준비</button>
+                <button id="training-start-btn" class="primary-btn" type="button" disabled>이 스토리로 딸깍 학습 시작</button>
+              </div>
+              <div id="training-teacher-note" class="note-box compact">
+                현재 연결된 OpenAI-compatible 모델이 있으면 그 모델을 교사 모델로 사용합니다.
+              </div>
+              <pre id="training-log" class="code-box training-log">학습 로그가 여기 표시됩니다.</pre>
+            </section>
+
             <details class="panel advanced-panel">
               <summary>고급 설정</summary>
               <div class="advanced-grid">

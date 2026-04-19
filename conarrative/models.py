@@ -358,6 +358,42 @@ class ModelSelectRequest(BaseModel):
     model: str = ""
 
 
+class TrainingEnvironmentOut(BaseModel):
+    preferred_python_version: str = ""
+    preferred_python_path: str = ""
+    training_env_dir: str = ""
+    training_python_path: str = ""
+    training_env_exists: bool = False
+    gpu_available: bool = False
+    gpu_name: str = ""
+    python_version: str = ""
+    torch_installed: bool = False
+    torch_version: str = ""
+    cuda_available: bool = False
+    cuda_device_count: int = 0
+    bitsandbytes_ok: bool = False
+    transformers_ok: bool = False
+    peft_ok: bool = False
+    ready: bool = False
+    detail: str = ""
+
+
+class TrainingSetupRequest(BaseModel):
+    force_reinstall: bool = False
+
+
+class OneClickTrainingRequest(BaseModel):
+    base_model: str = "google/gemma-4-E2B-it"
+    hf_token: str = ""
+    epochs: float = Field(default=1.0, ge=0.05, le=20.0)
+    per_device_batch_size: int = Field(default=1, ge=1, le=8)
+    gradient_accumulation_steps: int = Field(default=16, ge=1, le=256)
+    use_distillation: bool = True
+    teacher_base_url: str = ""
+    teacher_model: str = ""
+    teacher_api_key: str = ""
+
+
 class MemoryBundle(BaseModel):
     story: StoryOut
     bible: BibleContent

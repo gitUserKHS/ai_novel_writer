@@ -23,6 +23,7 @@ from .models import (
     HealthOut,
     LocalModelCatalogOut,
     ModelSelectRequest,
+    OneClickTrainingRequest,
     OutlineGenerateRequest,
     QuickstartOut,
     QuickstartRequest,
@@ -31,17 +32,21 @@ from .models import (
     SceneRequest,
     StoryCreate,
     StoryUpdate,
+    TrainingEnvironmentOut,
+    TrainingSetupRequest,
 )
 from .autodetect import auto_connect_settings, build_catalog_from_settings, detect_runtime_settings
 from .orchestrator import Orchestrator
 from .quickstart import build_story_from_prompt, continue_request_to_words, next_planned_outline_card, outline_to_scene_request, quickstart_settings
 from .runtime_settings import RuntimeSettingsStore
+from .train_runtime import ensure_training_environment, inspect_training_environment, run_one_click_training
 
 
 def create_app(config: AppConfig) -> FastAPI:
     storage = Storage(config.workspace.database_path)
     runtime_store = RuntimeSettingsStore(config.workspace.runtime_settings_path, config.backend)
     jobs = JobManager(storage)
+    training_jobs = JobManager(storage)
     initial_catalog = LocalModelCatalogOut()
 
     def save_settings(settings: RuntimeSettings) -> RuntimeSettings:
@@ -57,6 +62,7 @@ def create_app(config: AppConfig) -> FastAPI:
             yield
         finally:
             jobs.shutdown()
+            training_jobs.shutdown()
 
     app = FastAPI(title=config.app_name, lifespan=lifespan)
     app.add_middleware(
@@ -70,6 +76,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.storage = storage
     app.state.runtime_store = runtime_store
     app.state.jobs = jobs
+    app.state.training_jobs = training_jobs
     app.state.model_catalog = initial_catalog
 
     web_dir = Path(__file__).parent / "web"
@@ -186,6 +193,10 @@ def create_app(config: AppConfig) -> FastAPI:
     def list_runtime_models() -> Dict[str, Any]:
         return current_catalog(refresh=True).model_dump()
 
+    @app.get("/api/training/environment")
+    def get_training_environment() -> Dict[str, Any]:
+        return TrainingEnvironmentOut.model_validate(inspect_training_environment(config)).model_dump()
+
     @app.put("/api/runtime-settings/select-model")
     def select_runtime_model(payload: ModelSelectRequest) -> Dict[str, Any]:
         current = current_settings()
@@ -257,6 +268,40 @@ def create_app(config: AppConfig) -> FastAPI:
             raise HTTPException(status_code=404, detail="Story not found")
         shutil.rmtree(Path(config.workspace.exports_dir) / story_id, ignore_errors=True)
         return {"deleted": True, "story_id": story_id, "title": story.title}
+
+    @app.post("/api/stories/{story_id}/training/setup")
+    def setup_story_training(story_id: str, payload: TrainingSetupRequest | None = None) -> Dict[str, Any]:
+        ensure_story(story_id)
+        job_id = str(uuid4())
+
+        def task(log):
+            status = ensure_training_environment(config, log=log, force_reinstall=bool((payload or TrainingSetupRequest()).force_reinstall))
+            return {"environment": TrainingEnvironmentOut.model_validate(status).model_dump()}
+
+        training_jobs.enqueue(job_id=job_id, story_id=story_id, kind="training_setup", fn=task)
+        job = storage.get_job(job_id)
+        assert job is not None
+        return job.model_dump()
+
+    @app.post("/api/stories/{story_id}/training/auto")
+    def auto_train_story(story_id: str, payload: OneClickTrainingRequest) -> Dict[str, Any]:
+        ensure_story(story_id)
+        job_id = str(uuid4())
+
+        def task(log):
+            return run_one_click_training(
+                config=config,
+                storage=storage,
+                story_id=story_id,
+                runtime_settings=current_settings(),
+                request=payload.model_dump(),
+                log=log,
+            )
+
+        training_jobs.enqueue(job_id=job_id, story_id=story_id, kind="story_training", fn=task)
+        job = storage.get_job(job_id)
+        assert job is not None
+        return job.model_dump()
 
     @app.get("/api/stories/{story_id}/bible")
     def get_bible(story_id: str) -> Dict[str, Any]:

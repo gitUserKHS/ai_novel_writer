@@ -318,6 +318,96 @@ def test_runtime_model_catalog_and_selection(tmp_path: Path, monkeypatch):
     assert saved_settings["model"] == "mistral:latest"
 
 
+def test_training_environment_endpoint_returns_runtime_status(tmp_path: Path, monkeypatch):
+    fake_status = {
+        "preferred_python_version": "3.12",
+        "preferred_python_path": "C:/Python312/python.exe",
+        "training_env_dir": "C:/workspace/training/.venv-py312",
+        "training_python_path": "C:/workspace/training/.venv-py312/Scripts/python.exe",
+        "training_env_exists": True,
+        "gpu_available": True,
+        "gpu_name": "RTX 4060",
+        "python_version": "3.12.9",
+        "torch_installed": True,
+        "torch_version": "2.6.0",
+        "cuda_available": True,
+        "cuda_device_count": 1,
+        "bitsandbytes_ok": True,
+        "transformers_ok": True,
+        "peft_ok": True,
+        "ready": True,
+        "detail": "Training environment ready.",
+    }
+    monkeypatch.setattr("conarrative.app.inspect_training_environment", lambda config: fake_status)
+
+    app = create_app(make_config(tmp_path))
+    client = TestClient(app)
+
+    response = client.get("/api/training/environment")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ready"] is True
+    assert payload["gpu_name"] == "RTX 4060"
+    assert payload["torch_version"] == "2.6.0"
+
+
+def test_auto_training_job_runs_with_mocked_runtime(tmp_path: Path, monkeypatch):
+    fake_status = {
+        "preferred_python_version": "3.12",
+        "preferred_python_path": "C:/Python312/python.exe",
+        "training_env_dir": "C:/workspace/training/.venv-py312",
+        "training_python_path": "C:/workspace/training/.venv-py312/Scripts/python.exe",
+        "training_env_exists": True,
+        "gpu_available": True,
+        "gpu_name": "RTX 4060",
+        "python_version": "3.12.9",
+        "torch_installed": True,
+        "torch_version": "2.6.0",
+        "cuda_available": True,
+        "cuda_device_count": 1,
+        "bitsandbytes_ok": True,
+        "transformers_ok": True,
+        "peft_ok": True,
+        "ready": True,
+        "detail": "Training environment ready.",
+    }
+
+    def fake_run_one_click_training(**kwargs):
+        log = kwargs["log"]
+        log("Preparing training environment", 0.1)
+        log("Training completed", 1.0)
+        return {
+            "dataset_manifest": {"counts": {"accepted_sft": 2, "prompt_only_teacher": 2, "pairwise_dpo": 1, "hard_negative": 0}},
+            "training_metadata": {
+                "base_model": "google/gemma-4-E2B-it",
+                "train_files": ["accepted_sft.jsonl", "distilled_sft.jsonl"],
+                "distillation_used": True,
+                "output_dir": "C:/workspace/training/runs/story/final",
+                "final_adapter_dir": "C:/workspace/training/runs/story/final/final_adapter",
+                "env_status": fake_status,
+            },
+        }
+
+    monkeypatch.setattr("conarrative.app.inspect_training_environment", lambda config: fake_status)
+    monkeypatch.setattr("conarrative.app.run_one_click_training", fake_run_one_click_training)
+
+    app = create_app(make_config(tmp_path))
+    client = TestClient(app)
+    story = client.post("/api/stories", json={"title": "Train Me", "premise": "A premise."}).json()
+
+    response = client.post(
+        f"/api/stories/{story['id']}/training/auto",
+        json={"base_model": "google/gemma-4-E2B-it", "epochs": 1.0, "use_distillation": True},
+    )
+
+    assert response.status_code == 200
+    job = wait_for_job(client, response.json()["id"])
+    assert job["status"] == "succeeded"
+    assert job["result"]["training_metadata"]["base_model"] == "google/gemma-4-E2B-it"
+    assert job["result"]["training_metadata"]["distillation_used"] is True
+
+
 def test_continue_story_uses_next_outline_card(tmp_path: Path):
     app = create_app(make_config(tmp_path))
     client = TestClient(app)
