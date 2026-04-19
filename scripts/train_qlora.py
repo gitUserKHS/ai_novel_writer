@@ -27,6 +27,81 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def recommend_max_seq_length(args, torch) -> int:
+    if not torch.cuda.is_available():
+        return args.max_seq_length
+    total_gib = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+    if total_gib <= 8.5 and args.max_seq_length > 2048:
+        print(
+            f"Detected {total_gib:.1f} GiB VRAM. "
+            f"Reducing max_seq_length from {args.max_seq_length} to 2048 for a safer 8 GB training profile."
+        )
+        return 2048
+    return args.max_seq_length
+
+
+def load_model_with_fallbacks(
+    *,
+    args,
+    torch,
+    AutoModelForCausalLM,
+    quantization_config,
+    torch_dtype,
+):
+    load_kwargs = {
+        "trust_remote_code": args.trust_remote_code,
+        "dtype": torch_dtype if torch.cuda.is_available() else torch.float32,
+        "quantization_config": quantization_config,
+        "low_cpu_mem_usage": True,
+    }
+    strategies = []
+    if torch.cuda.is_available():
+        free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+        free_gib = free_bytes / (1024**3)
+        total_gib = total_bytes / (1024**3)
+        print(f"CUDA memory before model load: free={free_gib:.2f} GiB / total={total_gib:.2f} GiB")
+        torch.cuda.empty_cache()
+        # Prefer a single-GPU placement first. For 4-bit fine-tuning on 8 GB cards,
+        # `device_map=\"auto\"` can spuriously offload some modules to CPU/disk and fail early.
+        strategies.append({"device_map": {"": 0}})
+        strategies.append({"device_map": "auto"})
+    else:
+        strategies.append({"device_map": None})
+
+    errors = []
+    for index, strategy in enumerate(strategies, start=1):
+        try:
+            print(f"Loading model with strategy {index}/{len(strategies)}: device_map={strategy['device_map']}")
+            model = AutoModelForCausalLM.from_pretrained(
+                args.model_name,
+                **load_kwargs,
+                device_map=strategy["device_map"],
+            )
+            return model
+        except ValueError as exc:
+            text = str(exc)
+            errors.append(text)
+            if "dispatched on the CPU or the disk" in text:
+                print("Model loader tried to offload quantized modules to CPU/disk. Retrying with a different placement strategy.")
+                continue
+            raise
+        except RuntimeError as exc:
+            text = str(exc)
+            errors.append(text)
+            if torch.cuda.is_available() and "out of memory" in text.lower():
+                torch.cuda.empty_cache()
+                print("CUDA OOM while loading the model. Retrying with the next placement strategy.")
+                continue
+            raise
+
+    summary = "\n\n".join(errors[-2:]) if errors else "unknown error"
+    raise RuntimeError(
+        "Unable to load the base model on the current GPU. "
+        "Close other GPU-heavy apps or unload the teacher model server, then retry.\n\n"
+        f"{summary}"
+    )
+
+
 def main() -> None:
     args = parse_args()
     try:
@@ -56,6 +131,7 @@ def main() -> None:
     use_4bit = not args.no_4bit
     use_bf16 = bool(torch.cuda.is_available() and torch.cuda.is_bf16_supported())
     torch_dtype = torch.bfloat16 if use_bf16 else torch.float16
+    effective_max_seq_length = recommend_max_seq_length(args, torch)
     quantization_config = None
     if use_4bit:
         quantization_config = BitsAndBytesConfig(
@@ -69,13 +145,14 @@ def main() -> None:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model_name,
-        trust_remote_code=args.trust_remote_code,
-        torch_dtype=torch_dtype if torch.cuda.is_available() else torch.float32,
+    model = load_model_with_fallbacks(
+        args=args,
+        torch=torch,
+        AutoModelForCausalLM=AutoModelForCausalLM,
         quantization_config=quantization_config,
-        device_map="auto" if torch.cuda.is_available() else None,
+        torch_dtype=torch_dtype,
     )
+    model.config.use_cache = False
     if use_4bit:
         model = prepare_model_for_kbit_training(model)
 
@@ -105,7 +182,7 @@ def main() -> None:
         tokens = tokenizer(
             batch["text"],
             truncation=True,
-            max_length=args.max_seq_length,
+            max_length=effective_max_seq_length,
             padding=False,
         )
         tokens["labels"] = [input_ids[:] for input_ids in tokens["input_ids"]]
