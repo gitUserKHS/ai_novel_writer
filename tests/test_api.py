@@ -119,6 +119,34 @@ def test_quickstart_creates_story_outline_and_first_scene(tmp_path: Path):
     assert "Trying your local model first" in payload["detail"]
 
 
+def test_quickstart_fallback_handles_empty_themes(tmp_path: Path):
+    config = make_config(tmp_path)
+    runtime_path = Path(config.workspace.runtime_settings_path)
+    runtime_path.write_text(
+        '{"provider":"openai_compatible","base_url":"http://127.0.0.1:1/v1","model":"offline-model"}',
+        encoding="utf-8",
+    )
+
+    app = create_app(config)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/quickstart",
+        json={
+            "prompt": "A locksmith opens a door that remembers every visitor.",
+            "scene_count": 4,
+            "desired_length_words": 700,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["story"]["themes"] == []
+    assert len(payload["outline"]) == 4
+    assert len(payload["recent_scenes"]) == 1
+    assert payload["state"]["last_scene_index"] == 1
+
+
 def test_auto_connect_endpoint_saves_detected_backend(tmp_path: Path, monkeypatch):
     app = create_app(make_config(tmp_path))
     client = TestClient(app)

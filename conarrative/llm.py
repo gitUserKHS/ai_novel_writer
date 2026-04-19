@@ -167,7 +167,7 @@ class MockLLMProvider(BaseLLMProvider):
                         f"{secondary} 또는 환경이 예상 밖의 저항을 만든다",
                         f"장면 말미에 다음 장면으로 이어지는 정서적 질문을 남긴다",
                     ],
-                    must_include=[story.get("themes", ["감정의 여진"])[0]],
+                    must_include=[(story.get("themes") or ["감정의 여진"])[0]],
                     must_avoid=["설명조 요약"],
                     status="planned",
                 )
