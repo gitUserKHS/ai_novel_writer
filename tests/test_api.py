@@ -60,6 +60,64 @@ def test_story_patch_ignores_explicit_null_fields(tmp_path: Path):
     assert payload["notes"] == "updated"
 
 
+def test_delete_story_removes_story_data_and_exports(tmp_path: Path):
+    config = make_config(tmp_path)
+    app = create_app(config)
+    client = TestClient(app)
+
+    quickstart = client.post(
+        "/api/quickstart",
+        json={
+            "prompt": "A restorer keeps finding fresh paint on a portrait that should be dry.",
+            "scene_count": 3,
+            "desired_length_words": 650,
+        },
+    )
+    assert quickstart.status_code == 200
+    story_id = quickstart.json()["story"]["id"]
+
+    export_response = client.post(f"/api/stories/{story_id}/export")
+    assert export_response.status_code == 200
+
+    story_dir = Path(config.workspace.exports_dir) / story_id
+    assert story_dir.exists()
+
+    with client.app.state.storage.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM stories WHERE id = ?", (story_id,)).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM outline_cards WHERE story_id = ?", (story_id,)).fetchone()[0] >= 1
+        assert conn.execute("SELECT COUNT(*) FROM scenes WHERE story_id = ?", (story_id,)).fetchone()[0] >= 1
+        assert conn.execute("SELECT COUNT(*) FROM artifacts WHERE story_id = ?", (story_id,)).fetchone()[0] >= 1
+
+    delete_response = client.delete(f"/api/stories/{story_id}")
+
+    assert delete_response.status_code == 200
+    assert delete_response.json()["deleted"] is True
+    assert delete_response.json()["story_id"] == story_id
+    assert not story_dir.exists()
+
+    detail = client.get(f"/api/stories/{story_id}")
+    assert detail.status_code == 404
+
+    listed = client.get("/api/stories")
+    assert listed.status_code == 200
+    assert all(item["id"] != story_id for item in listed.json()["items"])
+
+    with client.app.state.storage.connect() as conn:
+        for table, column in [
+            ("stories", "id"),
+            ("story_bibles", "story_id"),
+            ("outline_cards", "story_id"),
+            ("scenes", "story_id"),
+            ("scene_candidates", "story_id"),
+            ("state_snapshots", "story_id"),
+            ("kg_edges", "story_id"),
+            ("dataset_records", "story_id"),
+            ("artifacts", "story_id"),
+        ]:
+            count = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {column} = ?", (story_id,)).fetchone()[0]
+            assert count == 0, f"{table} still has rows for {story_id}"
+
+
 def test_runtime_settings_reject_invalid_provider(tmp_path: Path):
     app = create_app(make_config(tmp_path))
     client = TestClient(app)

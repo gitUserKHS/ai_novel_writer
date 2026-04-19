@@ -29,6 +29,7 @@ const els = {
   continueBtn: document.getElementById("continue-btn"),
   exportBtn: document.getElementById("export-btn"),
   evaluateBtn: document.getElementById("evaluate-btn"),
+  deleteStoryBtn: document.getElementById("delete-story-btn"),
   outlineList: document.getElementById("outline-list"),
   sceneCount: document.getElementById("scene-count"),
   sceneList: document.getElementById("scene-list"),
@@ -75,9 +76,12 @@ function updateStoryButtons(enabled) {
   els.continueBtn.disabled = !enabled;
   els.exportBtn.disabled = !enabled;
   els.evaluateBtn.disabled = !enabled;
+  els.deleteStoryBtn.disabled = !enabled;
 }
 
 function renderEmptyStoryState() {
+  uiState.selectedStoryId = null;
+  uiState.selectedSceneId = null;
   uiState.storyDetail = null;
   uiState.scenes = [];
   uiState.outline = [];
@@ -327,6 +331,10 @@ async function loadStories() {
     uiState.selectedStoryId = null;
   }
   renderStories();
+  if (!uiState.stories.length) {
+    renderEmptyStoryState();
+    return;
+  }
   if (!uiState.selectedStoryId && uiState.stories.length) {
     await selectStory(uiState.stories[0].id);
   }
@@ -444,6 +452,25 @@ async function handleEvaluate() {
   await selectStory(uiState.selectedStoryId);
 }
 
+async function handleDeleteStory() {
+  if (!uiState.selectedStoryId || !uiState.storyDetail) {
+    return;
+  }
+  const storyId = uiState.selectedStoryId;
+  const storyTitle = uiState.storyDetail.story?.title || storyId;
+  const confirmed = window.confirm(`'${storyTitle}' 스토리를 삭제할까요?\n장면, 아웃라인, 상태, 내보낸 파일도 함께 삭제됩니다.`);
+  if (!confirmed) {
+    return;
+  }
+  const result = await api(`/api/stories/${encodeURIComponent(storyId)}`, {
+    method: "DELETE",
+  });
+  uiState.selectedStoryId = null;
+  uiState.selectedSceneId = null;
+  els.quickstartNote.textContent = `${result.title || storyTitle} 스토리를 삭제했습니다.`;
+  await loadStories();
+}
+
 async function handleSaveSettings(event) {
   event.preventDefault();
   const form = new FormData(els.settingsForm);
@@ -514,6 +541,7 @@ function bindEvents() {
   els.continueBtn.addEventListener("click", setBusy(els.continueBtn, "작성 중...", handleContinue));
   els.exportBtn.addEventListener("click", setBusy(els.exportBtn, "내보내는 중...", handleExport));
   els.evaluateBtn.addEventListener("click", setBusy(els.evaluateBtn, "평가 중...", handleEvaluate));
+  els.deleteStoryBtn.addEventListener("click", setBusy(els.deleteStoryBtn, "삭제 중...", handleDeleteStory));
   els.modelPicker.addEventListener("change", async () => {
     els.modelPicker.disabled = true;
     try {

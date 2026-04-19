@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager, closing, contextmanager
 import json
 from pathlib import Path
+import shutil
 from typing import Any, Dict, Iterator
 from uuid import uuid4
 
@@ -247,6 +248,15 @@ def create_app(config: AppConfig) -> FastAPI:
         if story is None:
             raise HTTPException(status_code=404, detail="Story not found")
         return story.model_dump()
+
+    @app.delete("/api/stories/{story_id}")
+    def delete_story(story_id: str) -> Dict[str, Any]:
+        story = ensure_story(story_id)
+        deleted = storage.delete_story(story_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Story not found")
+        shutil.rmtree(Path(config.workspace.exports_dir) / story_id, ignore_errors=True)
+        return {"deleted": True, "story_id": story_id, "title": story.title}
 
     @app.get("/api/stories/{story_id}/bible")
     def get_bible(story_id: str) -> Dict[str, Any]:

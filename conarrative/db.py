@@ -34,6 +34,7 @@ class Storage:
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        conn.execute("PRAGMA foreign_keys = ON")
         conn.row_factory = sqlite3.Row
         try:
             yield conn
@@ -280,6 +281,12 @@ class Storage:
             )
             conn.commit()
         return self.get_story(story_id)
+
+    def delete_story(self, story_id: str) -> bool:
+        with self._write_lock, self.connect() as conn:
+            cursor = conn.execute("DELETE FROM stories WHERE id = ?", (story_id,))
+            conn.commit()
+        return bool(cursor.rowcount)
 
     def _story_row_to_model(self, row: sqlite3.Row | None) -> StoryOut:
         assert row is not None

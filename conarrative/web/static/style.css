@@ -414,7 +414,8 @@ p {
 
 .primary-btn,
 .secondary-btn,
-.ghost-btn {
+.ghost-btn,
+.danger-btn {
   min-height: 44px;
   border-radius: 999px;
   border: 1px solid transparent;
@@ -440,9 +441,16 @@ p {
   border-color: var(--line);
 }
 
+.danger-btn {
+  background: rgba(138, 52, 22, 0.1);
+  color: var(--accent-dark);
+  border-color: rgba(138, 52, 22, 0.22);
+}
+
 .primary-btn:hover,
 .secondary-btn:hover,
 .ghost-btn:hover,
+.danger-btn:hover,
 .story-card:hover,
 .scene-card:hover {
   transform: translateY(-1px);
@@ -451,7 +459,8 @@ p {
 
 .primary-btn:disabled,
 .secondary-btn:disabled,
-.ghost-btn:disabled {
+.ghost-btn:disabled,
+.danger-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
   transform: none;
