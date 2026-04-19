@@ -18,6 +18,7 @@ const els = {
   quickstartSceneCount: document.getElementById("quickstart-scene-count"),
   quickstartWordCount: document.getElementById("quickstart-word-count"),
   quickstartBtn: document.getElementById("quickstart-btn"),
+  autoConnectBtn: document.getElementById("auto-connect-btn"),
   quickstartNote: document.getElementById("quickstart-note"),
   storyList: document.getElementById("story-list"),
   storyTitle: document.getElementById("story-title"),
@@ -67,6 +68,12 @@ function escapeHtml(text) {
     .replaceAll("'", "&#039;");
 }
 
+function updateStoryButtons(enabled) {
+  els.continueBtn.disabled = !enabled;
+  els.exportBtn.disabled = !enabled;
+  els.evaluateBtn.disabled = !enabled;
+}
+
 function renderEmptyStoryState() {
   uiState.storyDetail = null;
   uiState.scenes = [];
@@ -79,7 +86,7 @@ function renderEmptyStoryState() {
   els.storySummary.textContent = "왼쪽 목록에서 기존 스토리를 열거나 위에서 프롬프트 한 줄로 새 스토리를 시작할 수 있습니다.";
   els.outlineList.innerHTML = `<div class="empty-state">빠른 시작을 실행하면 여기에 아웃라인이 생깁니다.</div>`;
   els.sceneList.innerHTML = `<div class="empty-state">아직 생성된 장면이 없습니다.</div>`;
-  els.sceneDetail.innerHTML = `장면을 선택하면 본문이 여기 표시됩니다.`;
+  els.sceneDetail.textContent = "장면을 선택하면 본문이 여기 표시됩니다.";
   els.storyStats.innerHTML = `<div class="empty-state">선택된 스토리가 없습니다.</div>`;
   els.artifactList.innerHTML = `<div class="empty-state">아직 생성된 파일이 없습니다.</div>`;
   els.stateViewer.textContent = "{}";
@@ -89,18 +96,16 @@ function renderEmptyStoryState() {
   updateStoryButtons(false);
 }
 
-function updateStoryButtons(enabled) {
-  els.continueBtn.disabled = !enabled;
-  els.exportBtn.disabled = !enabled;
-  els.evaluateBtn.disabled = !enabled;
-}
-
 function renderHealth(health) {
-  const mode = health.backend_ok ? "connected" : "builtin-ready";
-  const detail = health.backend_ok
-    ? `${health.provider} / ${health.model}`
-    : "live model not connected, builtin storyteller still works";
-  els.healthPill.textContent = `${mode}: ${detail}`;
+  if (health.backend_ok && health.provider === "openai_compatible") {
+    els.healthPill.textContent = `연결됨: ${health.model}`;
+    return;
+  }
+  if (health.provider === "mock") {
+    els.healthPill.textContent = "내장 스토리 엔진 사용 중";
+    return;
+  }
+  els.healthPill.textContent = "실시간 모델 연결 안 됨";
 }
 
 function renderStories() {
@@ -125,12 +130,11 @@ function renderStories() {
 }
 
 function renderSummary() {
-  const detail = uiState.storyDetail;
-  if (!detail) {
+  if (!uiState.storyDetail) {
     renderEmptyStoryState();
     return;
   }
-  const story = detail.story;
+  const story = uiState.storyDetail.story;
   const themes = (story.themes || []).join(", ") || "자동 추출 없음";
   const characters = (story.characters || []).join(", ") || "자동 기본값";
   els.storyTitle.textContent = story.title;
@@ -170,40 +174,9 @@ function renderOutline() {
     .join("");
 }
 
-function renderScenes() {
-  els.sceneCount.textContent = `${uiState.scenes.length}개`;
-  if (!uiState.scenes.length) {
-    els.sceneList.innerHTML = `<div class="empty-state">아직 생성된 장면이 없습니다.</div>`;
-    els.sceneDetail.innerHTML = `장면을 선택하면 본문이 여기 표시됩니다.`;
-    return;
-  }
-  if (!uiState.selectedSceneId || !uiState.scenes.some((scene) => scene.id === uiState.selectedSceneId)) {
-    uiState.selectedSceneId = uiState.scenes[uiState.scenes.length - 1].id;
-  }
-  els.sceneList.innerHTML = uiState.scenes
-    .map(
-      (scene) => `
-        <button class="scene-card ${scene.id === uiState.selectedSceneId ? "active" : ""}" data-scene-id="${escapeHtml(scene.id)}">
-          <strong>Scene ${scene.scene_index}</strong>
-          <span>${escapeHtml(scene.title)}</span>
-          <span>${escapeHtml(scene.time_label)}</span>
-        </button>
-      `,
-    )
-    .join("");
-  els.sceneList.querySelectorAll("[data-scene-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      uiState.selectedSceneId = button.dataset.sceneId;
-      renderScenes();
-    });
-  });
-  const selected = uiState.scenes.find((scene) => scene.id === uiState.selectedSceneId);
-  renderSceneDetail(selected);
-}
-
 function renderSceneDetail(scene) {
   if (!scene) {
-    els.sceneDetail.innerHTML = `장면을 선택하면 본문이 여기 표시됩니다.`;
+    els.sceneDetail.textContent = "장면을 선택하면 본문이 여기 표시됩니다.";
     return;
   }
   const candidateMarkup = (scene.candidates || [])
@@ -236,18 +209,46 @@ function renderSceneDetail(scene) {
   `;
 }
 
+function renderScenes() {
+  els.sceneCount.textContent = `${uiState.scenes.length}개`;
+  if (!uiState.scenes.length) {
+    els.sceneList.innerHTML = `<div class="empty-state">아직 생성된 장면이 없습니다.</div>`;
+    els.sceneDetail.textContent = "장면을 선택하면 본문이 여기 표시됩니다.";
+    return;
+  }
+  if (!uiState.selectedSceneId || !uiState.scenes.some((scene) => scene.id === uiState.selectedSceneId)) {
+    uiState.selectedSceneId = uiState.scenes[uiState.scenes.length - 1].id;
+  }
+  els.sceneList.innerHTML = uiState.scenes
+    .map(
+      (scene) => `
+        <button class="scene-card ${scene.id === uiState.selectedSceneId ? "active" : ""}" data-scene-id="${escapeHtml(scene.id)}">
+          <strong>Scene ${scene.scene_index}</strong>
+          <span>${escapeHtml(scene.title)}</span>
+          <span>${escapeHtml(scene.time_label)}</span>
+        </button>
+      `,
+    )
+    .join("");
+  els.sceneList.querySelectorAll("[data-scene-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.selectedSceneId = button.dataset.sceneId;
+      renderScenes();
+    });
+  });
+  renderSceneDetail(uiState.scenes.find((scene) => scene.id === uiState.selectedSceneId));
+}
+
 function renderStoryStats() {
   if (!uiState.storyDetail) {
     els.storyStats.innerHTML = `<div class="empty-state">선택된 스토리가 없습니다.</div>`;
     return;
   }
-  const activeThreads = (uiState.state.active_threads || []).length;
-  const resolvedThreads = (uiState.state.resolved_threads || []).length;
   const stats = [
     ["현재 장면 수", uiState.scenes.length],
     ["마지막 장면 번호", uiState.state.last_scene_index || 0],
-    ["열린 떡밥", activeThreads],
-    ["회수된 떡밥", resolvedThreads],
+    ["열린 떡밥", (uiState.state.active_threads || []).length],
+    ["회수된 떡밥", (uiState.state.resolved_threads || []).length],
     ["Accepted 데이터", uiState.datasets.accepted || 0],
     ["Prompt-only 데이터", uiState.datasets.prompt_only || 0],
   ];
@@ -299,22 +300,24 @@ function setBusy(button, busyText, callback) {
 }
 
 async function loadHealth() {
-  const health = await api("/api/health");
-  renderHealth(health);
+  renderHealth(await api("/api/health"));
 }
 
 async function loadSettings() {
   const settings = await api("/api/runtime-settings");
-  Object.entries(settings).forEach(([key, value]) => {
+  for (const [key, value] of Object.entries(settings)) {
     if (els.settingsForm.elements[key]) {
       els.settingsForm.elements[key].value = value;
     }
-  });
+  }
 }
 
 async function loadStories() {
   const data = await api("/api/stories");
   uiState.stories = data.items || [];
+  if (uiState.selectedStoryId && !uiState.stories.some((story) => story.id === uiState.selectedStoryId)) {
+    uiState.selectedStoryId = null;
+  }
   renderStories();
   if (!uiState.selectedStoryId && uiState.stories.length) {
     await selectStory(uiState.stories[0].id);
@@ -354,18 +357,29 @@ async function handleQuickstart() {
     alert("프롬프트를 입력하세요.");
     return;
   }
-  const payload = {
-    prompt,
-    scene_count: Number(els.quickstartSceneCount.value || 4),
-    desired_length_words: Number(els.quickstartWordCount.value || 900),
-  };
   const result = await api("/api/quickstart", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      prompt,
+      scene_count: Number(els.quickstartSceneCount.value || 4),
+      desired_length_words: Number(els.quickstartWordCount.value || 900),
+    }),
   });
   els.quickstartNote.textContent = result.detail || "스토리를 만들었습니다.";
   await loadStories();
   await selectStory(result.story.id);
+  await loadHealth();
+}
+
+async function handleAutoConnect() {
+  const result = await api("/api/runtime-settings/auto-connect", { method: "POST" });
+  if (result.found && result.settings) {
+    els.quickstartNote.textContent = `${result.source} 자동 연결 완료. 현재 모델: ${result.settings.model}`;
+    await loadSettings();
+  } else {
+    els.quickstartNote.textContent = result.detail || "연결 가능한 로컬 모델을 찾지 못했습니다.";
+  }
+  await loadHealth();
 }
 
 async function handleContinue() {
@@ -381,6 +395,7 @@ async function handleContinue() {
   els.quickstartNote.textContent = result.detail || "다음 장면을 만들었습니다.";
   await loadStories();
   await selectStory(result.story.id);
+  await loadHealth();
 }
 
 async function handleExport() {
@@ -390,8 +405,8 @@ async function handleExport() {
   const result = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/export`, {
     method: "POST",
   });
-  await selectStory(uiState.selectedStoryId);
   els.quickstartNote.textContent = `내보내기 완료: ${result.artifact.path}`;
+  await selectStory(uiState.selectedStoryId);
 }
 
 async function handleEvaluate() {
@@ -401,8 +416,8 @@ async function handleEvaluate() {
   const result = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/evaluate`, {
     method: "POST",
   });
-  await selectStory(uiState.selectedStoryId);
   els.quickstartNote.textContent = `평가 완료: scene ${result.report.scene_count}, consistency ${result.report.average_consistency_score}`;
+  await selectStory(uiState.selectedStoryId);
 }
 
 async function handleSaveSettings(event) {
@@ -430,21 +445,20 @@ async function handleSaveSettings(event) {
 
 async function handleTestSettings() {
   const form = new FormData(els.settingsForm);
-  const payload = {
-    provider: form.get("provider"),
-    base_url: form.get("base_url"),
-    model: form.get("model"),
-    api_key: form.get("api_key"),
-    timeout_seconds: Number(form.get("timeout_seconds") || 180),
-    candidate_count: Number(form.get("candidate_count") || 3),
-    temperature_planner: Number(form.get("temperature_planner") || 0.2),
-    temperature_writer: Number(form.get("temperature_writer") || 0.85),
-    temperature_critic: Number(form.get("temperature_critic") || 0.2),
-    temperature_revision: Number(form.get("temperature_revision") || 0.4),
-  };
   const result = await api("/api/runtime-settings/test", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      provider: form.get("provider"),
+      base_url: form.get("base_url"),
+      model: form.get("model"),
+      api_key: form.get("api_key"),
+      timeout_seconds: Number(form.get("timeout_seconds") || 180),
+      candidate_count: Number(form.get("candidate_count") || 3),
+      temperature_planner: Number(form.get("temperature_planner") || 0.2),
+      temperature_writer: Number(form.get("temperature_writer") || 0.85),
+      temperature_critic: Number(form.get("temperature_critic") || 0.2),
+      temperature_revision: Number(form.get("temperature_revision") || 0.4),
+    }),
   });
   els.settingsResult.textContent = result.ok ? `연결 성공: ${result.detail}` : `연결 실패: ${result.detail}`;
   await loadHealth();
@@ -452,12 +466,13 @@ async function handleTestSettings() {
 
 function bindEvents() {
   els.refreshBtn.addEventListener("click", async () => {
-    await Promise.all([loadHealth(), loadStories()]);
+    await Promise.all([loadHealth(), loadStories(), loadSettings()]);
     if (uiState.selectedStoryId) {
       await selectStory(uiState.selectedStoryId);
     }
   });
   els.quickstartBtn.addEventListener("click", setBusy(els.quickstartBtn, "생성 중...", handleQuickstart));
+  els.autoConnectBtn.addEventListener("click", setBusy(els.autoConnectBtn, "연결 중...", handleAutoConnect));
   els.continueBtn.addEventListener("click", setBusy(els.continueBtn, "작성 중...", handleContinue));
   els.exportBtn.addEventListener("click", setBusy(els.exportBtn, "내보내는 중...", handleExport));
   els.evaluateBtn.addEventListener("click", setBusy(els.evaluateBtn, "평가 중...", handleEvaluate));

@@ -13,8 +13,8 @@
           <p class="eyebrow">One prompt in. Story out.</p>
           <h1>CoNarrative Studio</h1>
           <p class="hero-copy">
-            프롬프트 한 줄만 넣으면 스토리와 첫 장면을 바로 시작합니다. 기본 흐름은 내장 스토리 엔진으로 동작해서
-            모델 연결 없이 바로 사용할 수 있습니다.
+            프롬프트 한 줄만 넣으면 스토리, 아웃라인, 첫 장면까지 바로 시작합니다. 로컬 모델이 있으면 자동 연결 버튼으로
+            붙일 수 있고, 없으면 내장 스토리 엔진으로 바로 사용할 수 있습니다.
           </p>
         </div>
         <div class="hero-tools">
@@ -29,7 +29,7 @@
             <p class="section-kicker">Quick Start</p>
             <h2>아이디어 하나로 시작</h2>
           </div>
-          <span class="helper-chip">모델 연결 없이 동작</span>
+          <span class="helper-chip">기본값은 모델 연결 없이 동작</span>
         </div>
         <textarea
           id="quickstart-prompt"
@@ -46,6 +46,7 @@
             <input id="quickstart-word-count" type="number" value="900" min="250" max="3000" />
           </label>
           <button id="quickstart-btn" class="primary-btn" type="button">이 프롬프트로 시작</button>
+          <button id="auto-connect-btn" class="secondary-btn" type="button">로컬 모델 자동 연결</button>
         </div>
         <div id="quickstart-note" class="note-box">
           빠른 시작은 자동으로 스토리를 만들고, 아웃라인을 생성하고, 첫 장면까지 바로 작성합니다.
@@ -102,9 +103,7 @@
               </div>
               <div class="scene-layout">
                 <div id="scene-list" class="scene-list"></div>
-                <article id="scene-detail" class="scene-detail empty-state">
-                  장면을 선택하면 본문이 여기 표시됩니다.
-                </article>
+                <article id="scene-detail" class="scene-detail empty-state">장면을 선택하면 본문이 여기 표시됩니다.</article>
               </div>
             </section>
 

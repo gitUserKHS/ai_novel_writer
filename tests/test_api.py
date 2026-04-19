@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from conarrative.app import create_app
 from conarrative.config import AppConfig
+from conarrative.models import AutoConnectOut, RuntimeSettings
 
 
 def make_config(tmp_path: Path) -> AppConfig:
@@ -110,12 +111,46 @@ def test_quickstart_creates_story_outline_and_first_scene(tmp_path: Path):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["provider"] == "mock"
+    assert payload["provider"] == "openai_compatible"
     assert payload["story"]["title"]
     assert len(payload["outline"]) == 4
     assert len(payload["recent_scenes"]) == 1
     assert payload["state"]["last_scene_index"] == 1
-    assert "built-in storyteller" in payload["detail"]
+    assert "Trying your local model first" in payload["detail"]
+
+
+def test_auto_connect_endpoint_saves_detected_backend(tmp_path: Path, monkeypatch):
+    app = create_app(make_config(tmp_path))
+    client = TestClient(app)
+    detected = RuntimeSettings(
+        provider="openai_compatible",
+        base_url="http://127.0.0.1:11434/v1",
+        model="llama3.1:latest",
+        api_key="not-needed",
+    )
+
+    def fake_detect(_: RuntimeSettings) -> AutoConnectOut:
+        return AutoConnectOut(
+            found=True,
+            source="Ollama",
+            detail="Ollama detected at http://127.0.0.1:11434/v1 with model llama3.1:latest.",
+            settings=detected,
+            available_models=["llama3.1:latest", "nomic-embed-text:latest"],
+        )
+
+    monkeypatch.setattr("conarrative.app.detect_runtime_settings", fake_detect)
+
+    response = client.post("/api/runtime-settings/auto-connect")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["found"] is True
+    assert payload["source"] == "Ollama"
+    assert payload["settings"]["provider"] == "openai_compatible"
+    assert payload["settings"]["model"] == "llama3.1:latest"
+    current = client.get("/api/runtime-settings").json()
+    assert current["provider"] == "openai_compatible"
+    assert current["base_url"] == "http://127.0.0.1:11434/v1"
 
 
 def test_continue_story_uses_next_outline_card(tmp_path: Path):

@@ -332,6 +332,14 @@ class HealthOut(BaseModel):
     detail: str = ""
 
 
+class AutoConnectOut(BaseModel):
+    found: bool = False
+    source: str = ""
+    detail: str = ""
+    settings: Optional[RuntimeSettings] = None
+    available_models: List[str] = Field(default_factory=list)
+
+
 class MemoryBundle(BaseModel):
     story: StoryOut
     bible: BibleContent

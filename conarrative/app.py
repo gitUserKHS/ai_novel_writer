@@ -16,6 +16,7 @@ from .db import Storage
 from .jobs import JobManager
 from .llm import build_provider
 from .models import (
+    AutoConnectOut,
     BibleContent,
     ContinueStoryRequest,
     HealthOut,
@@ -27,6 +28,7 @@ from .models import (
     StoryCreate,
     StoryUpdate,
 )
+from .autodetect import detect_runtime_settings
 from .orchestrator import Orchestrator
 from .quickstart import build_story_from_prompt, continue_request_to_words, next_planned_outline_card, outline_to_scene_request, quickstart_settings
 from .runtime_settings import RuntimeSettingsStore
@@ -138,6 +140,20 @@ def create_app(config: AppConfig) -> FastAPI:
         with closing(build_provider(settings)) as provider:
             ok, detail = provider.health()
         return {"ok": ok, "detail": detail, "settings": settings.model_dump()}
+
+    @app.post("/api/runtime-settings/auto-connect")
+    def auto_connect_runtime_settings() -> Dict[str, Any]:
+        result = detect_runtime_settings(current_settings())
+        if result.found and result.settings is not None:
+            saved = runtime_store.save(result.settings)
+            return AutoConnectOut(
+                found=True,
+                source=result.source,
+                detail=result.detail,
+                settings=saved,
+                available_models=result.available_models,
+            ).model_dump()
+        return result.model_dump()
 
     @app.get("/api/stories")
     def list_stories() -> Dict[str, Any]:

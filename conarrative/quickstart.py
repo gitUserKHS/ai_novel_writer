@@ -51,10 +51,9 @@ THEME_HINTS = [
 
 
 def quickstart_settings(settings: RuntimeSettings) -> tuple[RuntimeSettings, str]:
-    quick = RuntimeSettings.model_validate({**settings.model_dump(), "provider": ProviderType.MOCK})
-    if settings.provider == ProviderType.MOCK:
-        return quick, "Using the built-in storyteller. No model setup is required."
-    return quick, "Using the built-in storyteller so this works even without a connected model."
+    if settings.provider == ProviderType.OPENAI_COMPATIBLE:
+        return settings, f"Trying your local model first: {settings.model}. If it does not answer, the built-in storyteller fills in."
+    return settings, "Using the built-in storyteller. No model setup is required."
 
 
 def build_story_from_prompt(request: QuickstartRequest) -> StoryCreate:
