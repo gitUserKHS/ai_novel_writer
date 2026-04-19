@@ -1,0 +1,9 @@
+# Optional training stack for dataset distillation and LoRA/QLoRA fine-tuning.
+# Install inside a separate training environment when possible.
+torch
+transformers
+datasets
+peft
+accelerate
+bitsandbytes
+sentencepiece

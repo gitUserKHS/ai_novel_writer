@@ -508,6 +508,33 @@ class Storage:
             )
             conn.commit()
 
+    def list_dataset_records(self, story_id: Optional[str] = None, pool_type: Optional[PoolType] = None) -> List[Dict[str, Any]]:
+        query = "SELECT id, story_id, scene_id, pool_type, payload_json, created_at FROM dataset_records"
+        conditions: List[str] = []
+        params: List[Any] = []
+        if story_id is not None:
+            conditions.append("story_id = ?")
+            params.append(story_id)
+        if pool_type is not None:
+            conditions.append("pool_type = ?")
+            params.append(pool_type.value)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY id ASC"
+        with self.connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "story_id": row["story_id"],
+                "scene_id": row["scene_id"],
+                "pool_type": row["pool_type"],
+                "payload": self._loads_json(row["payload_json"], {}),
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
     def dataset_counts(self, story_id: str) -> Dict[str, int]:
         with self.connect() as conn:
             rows = conn.execute(

@@ -16,6 +16,7 @@ from .llm import build_provider
 from .models import BibleContent, OutlineGenerateRequest, SceneRequest, StoryCreate, StoryUpdate
 from .orchestrator import Orchestrator
 from .runtime_settings import RuntimeSettingsStore
+from .training import export_training_corpus
 
 
 def load_structured_file(path: str) -> Dict[str, Any]:
@@ -130,6 +131,21 @@ def cmd_evaluate(config: AppConfig, args: argparse.Namespace) -> None:
     print(f"Saved to {out_path}")
 
 
+def cmd_export_dataset(config: AppConfig, args: argparse.Namespace) -> None:
+    storage = Storage(config.workspace.database_path)
+    records = storage.list_dataset_records(story_id=args.story_id)
+    if not records:
+        raise SystemExit("No dataset records found for export.")
+    if args.out_dir:
+        out_dir = Path(args.out_dir)
+    elif args.story_id:
+        out_dir = Path(config.workspace.root) / "training" / args.story_id
+    else:
+        out_dir = Path(config.workspace.root) / "training" / "all-stories"
+    manifest = export_training_corpus(records, out_dir)
+    print(json.dumps(manifest, ensure_ascii=False, indent=2))
+
+
 def cmd_serve(config: AppConfig, args: argparse.Namespace) -> None:
     app = create_app(config)
     uvicorn.run(app, host=args.host or config.server.host, port=args.port or config.server.port, reload=False)
@@ -188,6 +204,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("evaluate", help="Evaluate story and save JSON report")
     p.add_argument("--story-id", required=True)
     p.set_defaults(func=cmd_evaluate)
+
+    p = sub.add_parser("export-dataset", help="Export training pools as separated JSONL files")
+    p.add_argument("--story-id", required=False)
+    p.add_argument("--out-dir", type=str, default=None)
+    p.set_defaults(func=cmd_export_dataset)
 
     p = sub.add_parser("serve", help="Run web UI and API")
     p.add_argument("--host", type=str)

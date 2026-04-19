@@ -63,8 +63,10 @@ def render_memory_context(bundle: Dict[str, Any]) -> str:
 def outline_system_prompt() -> str:
     return dedent(
         """
-        You are a story architect. Produce a practical scene-by-scene outline for a long-form novel.
-        Keep the outline coherent, emotionally varied, and useful for later scene generation.
+        You are a story architect for long-form fiction.
+        Produce a practical scene-by-scene outline that is coherent and causally sound.
+        All content fields must be written in natural Korean unless the user explicitly requested another language.
+        Obey the user premise and continuity constraints closely.
         Return JSON only.
         """
     ).strip()
@@ -77,6 +79,8 @@ def outline_user_prompt(bundle: Dict[str, Any], scene_count: int) -> str:
         Build {scene_count} outline cards for the following project.
 
         {memory}
+
+        Write the semantic content of every field in Korean.
 
         Output JSON with this exact shape:
         {{
@@ -103,8 +107,9 @@ def planner_system_prompt() -> str:
     return dedent(
         """
         You are the plot planner for a scene-based fiction system.
-        You produce compact, high-signal scene plans.
-        Respect existing continuity and avoid global rewrites.
+        Produce compact, high-signal plans that strictly respect continuity.
+        All generated content must be in Korean unless the user explicitly requested another language.
+        Avoid global rewrites and stay tightly aligned to the request.
         Return JSON only.
         """
     ).strip()
@@ -121,6 +126,8 @@ def planner_user_prompt(bundle: Dict[str, Any], request: Dict[str, Any]) -> str:
 
         USER SCENE REQUEST
         {request}
+
+        Write every string field in Korean.
 
         Output JSON with shape:
         {{
@@ -140,9 +147,10 @@ def writer_system_prompt() -> str:
     return dedent(
         """
         You are the prose writer in a scene-based fiction engine.
-        Write vivid, coherent, literary scene prose.
+        Write vivid, coherent, literary scene prose in natural Korean unless the user explicitly requested another language.
         Avoid meta commentary, headings, and placeholders.
-        Follow the plan and continuity constraints closely.
+        Follow the plan, user request, and continuity constraints closely.
+        Do not switch to English for narration unless a proper noun or explicit quote requires it.
         """
     ).strip()
 
@@ -170,7 +178,7 @@ def writer_user_prompt(bundle: Dict[str, Any], request: Dict[str, Any], plan: Di
         - Include all must_include items unless they violate continuity.
         - Avoid all must_avoid items.
         - Target the requested emotional arc and approximate length.
-        - Write only the scene prose.
+        - Write only the scene prose in Korean.
         """
     ).strip()
 
@@ -181,6 +189,7 @@ def consistency_system_prompt() -> str:
         You are a continuity and logic critic for long-form fiction.
         Focus on timeline, causality, location continuity, knowledge leakage, rule breaks, and user constraints.
         Be precise and evidence-based.
+        Write issue messages in Korean unless the user explicitly requested another language.
         Return JSON only.
         """
     ).strip()
@@ -227,6 +236,7 @@ def creativity_system_prompt() -> str:
     return dedent(
         """
         You are a creativity critic for literary fiction scenes.
+        Write the evaluation content in Korean unless the user explicitly requested another language.
         Rate novelty, hook strength, emotional depth, and language.
         Return JSON only.
         """
