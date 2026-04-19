@@ -665,7 +665,9 @@ class Storage:
         with self._write_lock, self.connect() as conn:
             conn.execute("DELETE FROM outline_cards WHERE story_id = ?", (story_id,))
             for idx, card in enumerate(cards, start=1):
-                card_id = card.id or f"{story_id}-outline-{idx:02d}"
+                # Provider-generated outline ids are often reused across stories
+                # (for example, "outline-01"), so persist story-scoped ids only.
+                card_id = f"{story_id}-outline-{idx:02d}"
                 payload = card.model_dump(exclude={"id", "status"})
                 conn.execute(
                     "INSERT INTO outline_cards (id, story_id, scene_order, card_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",

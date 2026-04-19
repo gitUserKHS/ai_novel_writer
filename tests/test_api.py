@@ -147,6 +147,48 @@ def test_quickstart_fallback_handles_empty_themes(tmp_path: Path):
     assert payload["state"]["last_scene_index"] == 1
 
 
+def test_quickstart_can_create_multiple_stories_with_reused_outline_ids(tmp_path: Path):
+    config = make_config(tmp_path)
+    runtime_path = Path(config.workspace.runtime_settings_path)
+    runtime_path.write_text(
+        '{"provider":"openai_compatible","base_url":"http://127.0.0.1:1/v1","model":"offline-model"}',
+        encoding="utf-8",
+    )
+
+    app = create_app(config)
+    client = TestClient(app)
+
+    first = client.post(
+        "/api/quickstart",
+        json={
+            "prompt": "A singer hears tomorrow's applause before she has written the song.",
+            "scene_count": 3,
+            "desired_length_words": 650,
+        },
+    )
+    second = client.post(
+        "/api/quickstart",
+        json={
+            "prompt": "A night guard finds a notebook that logs doors opening before anyone touches them.",
+            "scene_count": 3,
+            "desired_length_words": 650,
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    first_payload = first.json()
+    second_payload = second.json()
+    first_story_id = first_payload["story"]["id"]
+    second_story_id = second_payload["story"]["id"]
+
+    assert first_story_id != second_story_id
+    assert all(item["id"].startswith(f"{first_story_id}-outline-") for item in first_payload["outline"])
+    assert all(item["id"].startswith(f"{second_story_id}-outline-") for item in second_payload["outline"])
+    assert {item["id"] for item in first_payload["outline"]}.isdisjoint({item["id"] for item in second_payload["outline"]})
+
+
 def test_auto_connect_endpoint_saves_detected_backend(tmp_path: Path, monkeypatch):
     app = create_app(make_config(tmp_path))
     client = TestClient(app)
