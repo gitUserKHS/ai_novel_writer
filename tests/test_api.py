@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from conarrative.app import create_app
 from conarrative.config import AppConfig
-from conarrative.models import AutoConnectOut, RuntimeSettings
+from conarrative.models import AutoConnectOut, LocalModelCatalogOut, LocalModelOption, RuntimeSettings
 
 
 def make_config(tmp_path: Path) -> AppConfig:
@@ -151,6 +151,43 @@ def test_auto_connect_endpoint_saves_detected_backend(tmp_path: Path, monkeypatc
     current = client.get("/api/runtime-settings").json()
     assert current["provider"] == "openai_compatible"
     assert current["base_url"] == "http://127.0.0.1:11434/v1"
+
+
+def test_runtime_model_catalog_and_selection(tmp_path: Path, monkeypatch):
+    option_one = LocalModelOption(source="Ollama", base_url="http://127.0.0.1:11434/v1", model="llama3.1:latest")
+    option_two = LocalModelOption(source="Ollama", base_url="http://127.0.0.1:11434/v1", model="mistral:latest")
+    fake_catalog = LocalModelCatalogOut(
+        options=[option_one, option_two],
+        current=option_one,
+        detail="Detected 2 local model option(s).",
+    )
+
+    monkeypatch.setattr("conarrative.app.auto_connect_settings", lambda current: (current, fake_catalog, False))
+    monkeypatch.setattr("conarrative.app.build_catalog_from_settings", lambda current, catalog=None: catalog or fake_catalog)
+
+    app = create_app(make_config(tmp_path))
+    client = TestClient(app)
+
+    catalog_response = client.get("/api/runtime-settings/models")
+    assert catalog_response.status_code == 200
+    catalog_payload = catalog_response.json()
+    assert len(catalog_payload["options"]) == 2
+    assert catalog_payload["current"]["model"] == "llama3.1:latest"
+
+    select_response = client.put(
+        "/api/runtime-settings/select-model",
+        json={
+            "provider": "openai_compatible",
+            "base_url": "http://127.0.0.1:11434/v1",
+            "model": "mistral:latest",
+        },
+    )
+    assert select_response.status_code == 200
+    assert select_response.json()["model"] == "mistral:latest"
+
+    saved_settings = client.get("/api/runtime-settings").json()
+    assert saved_settings["provider"] == "openai_compatible"
+    assert saved_settings["model"] == "mistral:latest"
 
 
 def test_continue_story_uses_next_outline_card(tmp_path: Path):

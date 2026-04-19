@@ -45,8 +45,13 @@
             첫 장면 길이
             <input id="quickstart-word-count" type="number" value="900" min="250" max="3000" />
           </label>
+          <label class="model-picker">
+            사용할 모델
+            <select id="model-picker"></select>
+          </label>
           <button id="quickstart-btn" class="primary-btn" type="button">이 프롬프트로 시작</button>
           <button id="auto-connect-btn" class="secondary-btn" type="button">로컬 모델 자동 연결</button>
+          <button id="refresh-models-btn" class="ghost-btn" type="button">모델 목록 새로고침</button>
         </div>
         <div id="quickstart-note" class="note-box">
           빠른 시작은 자동으로 스토리를 만들고, 아웃라인을 생성하고, 첫 장면까지 바로 작성합니다.

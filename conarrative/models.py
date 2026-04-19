@@ -340,6 +340,24 @@ class AutoConnectOut(BaseModel):
     available_models: List[str] = Field(default_factory=list)
 
 
+class LocalModelOption(BaseModel):
+    source: str
+    base_url: str
+    model: str
+
+
+class LocalModelCatalogOut(BaseModel):
+    options: List[LocalModelOption] = Field(default_factory=list)
+    current: Optional[LocalModelOption] = None
+    detail: str = ""
+
+
+class ModelSelectRequest(BaseModel):
+    provider: ProviderType = ProviderType.OPENAI_COMPATIBLE
+    base_url: str = ""
+    model: str = ""
+
+
 class MemoryBundle(BaseModel):
     story: StoryOut
     bible: BibleContent

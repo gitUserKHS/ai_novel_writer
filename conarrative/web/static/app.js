@@ -9,6 +9,7 @@ const uiState = {
   state: {},
   datasets: {},
   kg: [],
+  modelCatalog: { options: [], current: null, detail: "" },
 };
 
 const els = {
@@ -17,8 +18,10 @@ const els = {
   quickstartPrompt: document.getElementById("quickstart-prompt"),
   quickstartSceneCount: document.getElementById("quickstart-scene-count"),
   quickstartWordCount: document.getElementById("quickstart-word-count"),
+  modelPicker: document.getElementById("model-picker"),
   quickstartBtn: document.getElementById("quickstart-btn"),
   autoConnectBtn: document.getElementById("auto-connect-btn"),
+  refreshModelsBtn: document.getElementById("refresh-models-btn"),
   quickstartNote: document.getElementById("quickstart-note"),
   storyList: document.getElementById("story-list"),
   storyTitle: document.getElementById("story-title"),
@@ -98,7 +101,7 @@ function renderEmptyStoryState() {
 
 function renderHealth(health) {
   if (health.backend_ok && health.provider === "openai_compatible") {
-    els.healthPill.textContent = `연결됨: ${health.model}`;
+    els.healthPill.textContent = `로컬 모델 연결됨: ${health.model}`;
     return;
   }
   if (health.provider === "mock") {
@@ -285,18 +288,18 @@ function renderArtifacts() {
     .join("");
 }
 
-function setBusy(button, busyText, callback) {
-  return async (...args) => {
-    const previousText = button.textContent;
-    button.disabled = true;
-    button.textContent = busyText;
-    try {
-      await callback(...args);
-    } finally {
-      button.disabled = false;
-      button.textContent = previousText;
-    }
-  };
+function renderModelCatalog() {
+  const catalog = uiState.modelCatalog || { options: [], current: null, detail: "" };
+  const currentKey = catalog.current ? `${catalog.current.base_url}||${catalog.current.model}` : "mock";
+  const builtinOption = `<option value="mock" ${currentKey === "mock" ? "selected" : ""}>내장 스토리 엔진</option>`;
+  const remoteOptions = (catalog.options || [])
+    .map((option) => {
+      const value = `${option.base_url}||${option.model}`;
+      const label = `${option.source} / ${option.model}`;
+      return `<option value="${escapeHtml(value)}" ${value === currentKey ? "selected" : ""}>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  els.modelPicker.innerHTML = builtinOption + remoteOptions;
 }
 
 async function loadHealth() {
@@ -310,6 +313,11 @@ async function loadSettings() {
       els.settingsForm.elements[key].value = value;
     }
   }
+}
+
+async function loadModelCatalog() {
+  uiState.modelCatalog = await api("/api/runtime-settings/models");
+  renderModelCatalog();
 }
 
 async function loadStories() {
@@ -366,20 +374,37 @@ async function handleQuickstart() {
     }),
   });
   els.quickstartNote.textContent = result.detail || "스토리를 만들었습니다.";
-  await loadStories();
+  await Promise.all([loadStories(), loadHealth(), loadModelCatalog()]);
   await selectStory(result.story.id);
-  await loadHealth();
 }
 
 async function handleAutoConnect() {
   const result = await api("/api/runtime-settings/auto-connect", { method: "POST" });
-  if (result.found && result.settings) {
-    els.quickstartNote.textContent = `${result.source} 자동 연결 완료. 현재 모델: ${result.settings.model}`;
-    await loadSettings();
+  els.quickstartNote.textContent = result.detail || "모델 연결 상태를 확인했습니다.";
+  await Promise.all([loadSettings(), loadHealth(), loadModelCatalog()]);
+}
+
+async function handleModelSelection() {
+  const selected = els.modelPicker.value;
+  if (selected === "mock") {
+    await api("/api/runtime-settings/select-model", {
+      method: "PUT",
+      body: JSON.stringify({ provider: "mock", base_url: "", model: "" }),
+    });
+    els.quickstartNote.textContent = "내장 스토리 엔진으로 전환했습니다.";
   } else {
-    els.quickstartNote.textContent = result.detail || "연결 가능한 로컬 모델을 찾지 못했습니다.";
+    const [baseUrl, model] = selected.split("||");
+    await api("/api/runtime-settings/select-model", {
+      method: "PUT",
+      body: JSON.stringify({
+        provider: "openai_compatible",
+        base_url: baseUrl,
+        model,
+      }),
+    });
+    els.quickstartNote.textContent = `모델을 ${model}로 변경했습니다.`;
   }
-  await loadHealth();
+  await Promise.all([loadSettings(), loadHealth(), loadModelCatalog()]);
 }
 
 async function handleContinue() {
@@ -393,9 +418,8 @@ async function handleContinue() {
     }),
   });
   els.quickstartNote.textContent = result.detail || "다음 장면을 만들었습니다.";
-  await loadStories();
+  await Promise.all([loadStories(), loadHealth(), loadModelCatalog()]);
   await selectStory(result.story.id);
-  await loadHealth();
 }
 
 async function handleExport() {
@@ -423,24 +447,23 @@ async function handleEvaluate() {
 async function handleSaveSettings(event) {
   event.preventDefault();
   const form = new FormData(els.settingsForm);
-  const payload = {
-    provider: form.get("provider"),
-    base_url: form.get("base_url"),
-    model: form.get("model"),
-    api_key: form.get("api_key"),
-    timeout_seconds: Number(form.get("timeout_seconds") || 180),
-    candidate_count: Number(form.get("candidate_count") || 3),
-    temperature_planner: Number(form.get("temperature_planner") || 0.2),
-    temperature_writer: Number(form.get("temperature_writer") || 0.85),
-    temperature_critic: Number(form.get("temperature_critic") || 0.2),
-    temperature_revision: Number(form.get("temperature_revision") || 0.4),
-  };
   await api("/api/runtime-settings", {
     method: "PUT",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      provider: form.get("provider"),
+      base_url: form.get("base_url"),
+      model: form.get("model"),
+      api_key: form.get("api_key"),
+      timeout_seconds: Number(form.get("timeout_seconds") || 180),
+      candidate_count: Number(form.get("candidate_count") || 3),
+      temperature_planner: Number(form.get("temperature_planner") || 0.2),
+      temperature_writer: Number(form.get("temperature_writer") || 0.85),
+      temperature_critic: Number(form.get("temperature_critic") || 0.2),
+      temperature_revision: Number(form.get("temperature_revision") || 0.4),
+    }),
   });
   els.settingsResult.textContent = "설정을 저장했습니다.";
-  await loadHealth();
+  await Promise.all([loadHealth(), loadModelCatalog()]);
 }
 
 async function handleTestSettings() {
@@ -464,18 +487,41 @@ async function handleTestSettings() {
   await loadHealth();
 }
 
+function setBusy(button, busyText, callback) {
+  return async (...args) => {
+    const previousText = button.textContent;
+    button.disabled = true;
+    button.textContent = busyText;
+    try {
+      await callback(...args);
+    } finally {
+      button.disabled = false;
+      button.textContent = previousText;
+    }
+  };
+}
+
 function bindEvents() {
   els.refreshBtn.addEventListener("click", async () => {
-    await Promise.all([loadHealth(), loadStories(), loadSettings()]);
+    await Promise.all([loadHealth(), loadSettings(), loadStories(), loadModelCatalog()]);
     if (uiState.selectedStoryId) {
       await selectStory(uiState.selectedStoryId);
     }
   });
   els.quickstartBtn.addEventListener("click", setBusy(els.quickstartBtn, "생성 중...", handleQuickstart));
   els.autoConnectBtn.addEventListener("click", setBusy(els.autoConnectBtn, "연결 중...", handleAutoConnect));
+  els.refreshModelsBtn.addEventListener("click", setBusy(els.refreshModelsBtn, "새로고침 중...", loadModelCatalog));
   els.continueBtn.addEventListener("click", setBusy(els.continueBtn, "작성 중...", handleContinue));
   els.exportBtn.addEventListener("click", setBusy(els.exportBtn, "내보내는 중...", handleExport));
   els.evaluateBtn.addEventListener("click", setBusy(els.evaluateBtn, "평가 중...", handleEvaluate));
+  els.modelPicker.addEventListener("change", async () => {
+    els.modelPicker.disabled = true;
+    try {
+      await handleModelSelection();
+    } finally {
+      els.modelPicker.disabled = false;
+    }
+  });
   els.settingsForm.addEventListener("submit", handleSaveSettings);
   els.testSettingsBtn.addEventListener("click", setBusy(els.testSettingsBtn, "테스트 중...", handleTestSettings));
 }
@@ -483,7 +529,7 @@ function bindEvents() {
 async function boot() {
   bindEvents();
   renderEmptyStoryState();
-  await Promise.all([loadHealth(), loadSettings(), loadStories()]);
+  await Promise.all([loadHealth(), loadSettings(), loadStories(), loadModelCatalog()]);
 }
 
 boot().catch((error) => {

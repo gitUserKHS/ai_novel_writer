@@ -20,15 +20,18 @@ from .models import (
     BibleContent,
     ContinueStoryRequest,
     HealthOut,
+    LocalModelCatalogOut,
+    ModelSelectRequest,
     OutlineGenerateRequest,
     QuickstartOut,
     QuickstartRequest,
+    ProviderType,
     RuntimeSettings,
     SceneRequest,
     StoryCreate,
     StoryUpdate,
 )
-from .autodetect import detect_runtime_settings
+from .autodetect import auto_connect_settings, build_catalog_from_settings, detect_runtime_settings
 from .orchestrator import Orchestrator
 from .quickstart import build_story_from_prompt, continue_request_to_words, next_planned_outline_card, outline_to_scene_request, quickstart_settings
 from .runtime_settings import RuntimeSettingsStore
@@ -38,9 +41,17 @@ def create_app(config: AppConfig) -> FastAPI:
     storage = Storage(config.workspace.database_path)
     runtime_store = RuntimeSettingsStore(config.workspace.runtime_settings_path, config.backend)
     jobs = JobManager(storage)
+    initial_catalog = LocalModelCatalogOut()
+
+    def save_settings(settings: RuntimeSettings) -> RuntimeSettings:
+        return runtime_store.save(settings)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        saved_settings, catalog, changed = auto_connect_settings(current_settings())
+        if changed:
+            save_settings(saved_settings)
+        app.state.model_catalog = build_catalog_from_settings(current_settings(), catalog)
         try:
             yield
         finally:
@@ -58,6 +69,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.storage = storage
     app.state.runtime_store = runtime_store
     app.state.jobs = jobs
+    app.state.model_catalog = initial_catalog
 
     web_dir = Path(__file__).parent / "web"
     static_dir = web_dir / "static"
@@ -65,6 +77,18 @@ def create_app(config: AppConfig) -> FastAPI:
 
     def current_settings() -> RuntimeSettings:
         return runtime_store.load()
+
+    def current_catalog(refresh: bool = False) -> LocalModelCatalogOut:
+        if refresh:
+            catalog = build_catalog_from_settings(current_settings())
+            app.state.model_catalog = catalog
+            return catalog
+        cached = getattr(app.state, "model_catalog", None)
+        if isinstance(cached, LocalModelCatalogOut):
+            return build_catalog_from_settings(current_settings(), cached)
+        catalog = build_catalog_from_settings(current_settings())
+        app.state.model_catalog = catalog
+        return catalog
 
     @contextmanager
     def orchestrator_context(settings: RuntimeSettings | None = None) -> Iterator[Orchestrator]:
@@ -131,7 +155,8 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.put("/api/runtime-settings")
     def put_runtime_settings(payload: RuntimeSettings) -> Dict[str, Any]:
-        saved = runtime_store.save(payload)
+        saved = save_settings(payload)
+        app.state.model_catalog = build_catalog_from_settings(saved)
         return saved.model_dump()
 
     @app.post("/api/runtime-settings/test")
@@ -145,7 +170,8 @@ def create_app(config: AppConfig) -> FastAPI:
     def auto_connect_runtime_settings() -> Dict[str, Any]:
         result = detect_runtime_settings(current_settings())
         if result.found and result.settings is not None:
-            saved = runtime_store.save(result.settings)
+            saved = save_settings(result.settings)
+            app.state.model_catalog = build_catalog_from_settings(saved)
             return AutoConnectOut(
                 found=True,
                 source=result.source,
@@ -154,6 +180,32 @@ def create_app(config: AppConfig) -> FastAPI:
                 available_models=result.available_models,
             ).model_dump()
         return result.model_dump()
+
+    @app.get("/api/runtime-settings/models")
+    def list_runtime_models() -> Dict[str, Any]:
+        return current_catalog(refresh=True).model_dump()
+
+    @app.put("/api/runtime-settings/select-model")
+    def select_runtime_model(payload: ModelSelectRequest) -> Dict[str, Any]:
+        current = current_settings()
+        if payload.provider == ProviderType.MOCK:
+            saved = save_settings(RuntimeSettings.model_validate({**current.model_dump(), "provider": ProviderType.MOCK}))
+            app.state.model_catalog = build_catalog_from_settings(saved)
+            return saved.model_dump()
+        if not payload.base_url or not payload.model:
+            raise HTTPException(status_code=422, detail="base_url and model are required for openai_compatible selection.")
+        saved = save_settings(
+            RuntimeSettings.model_validate(
+                {
+                    **current.model_dump(),
+                    "provider": ProviderType.OPENAI_COMPATIBLE,
+                    "base_url": payload.base_url,
+                    "model": payload.model,
+                }
+            )
+        )
+        app.state.model_catalog = build_catalog_from_settings(saved)
+        return saved.model_dump()
 
     @app.get("/api/stories")
     def list_stories() -> Dict[str, Any]:
