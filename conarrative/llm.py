@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import random
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Sequence, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, TypeVar
 
 import httpx
 from pydantic import BaseModel
@@ -51,6 +51,9 @@ T = TypeVar("T", bound=BaseModel)
 class BaseLLMProvider(ABC):
     def __init__(self, settings: RuntimeSettings) -> None:
         self.settings = settings
+
+    def set_stream_callback(self, callback: Optional[Callable[[str], None]]) -> None:
+        return None
 
     def close(self) -> None:
         return None
@@ -442,9 +445,13 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         super().__init__(settings)
         self.base_url = settings.base_url.rstrip("/")
         self.client = httpx.Client(timeout=settings.timeout_seconds)
+        self.stream_callback: Optional[Callable[[str], None]] = None
 
     def close(self) -> None:
         self.client.close()
+
+    def set_stream_callback(self, callback: Optional[Callable[[str], None]]) -> None:
+        self.stream_callback = callback
 
     def health(self) -> Tuple[bool, str]:
         models_url = f"{self.base_url}/models"
@@ -486,12 +493,19 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         }
         return payload
 
-    def _chat_text(self, system: str, user: str, temperature: float, max_tokens: int = 1500) -> str:
+    def _chat_text(self, system: str, user: str, temperature: float, max_tokens: int = 1500, stream: bool = False) -> str:
         url = f"{self.base_url}/chat/completions"
+        payload = self._chat_payload(system, user, temperature=temperature, max_tokens=max_tokens)
+        if stream and self.stream_callback is not None:
+            try:
+                return self._chat_text_streaming(url, payload)
+            except Exception as exc:
+                if self.stream_callback is not None:
+                    self.stream_callback(f"\n[stream fallback: {exc}]\n")
         response = self.client.post(
             url,
             headers=self._headers(),
-            json=self._chat_payload(system, user, temperature=temperature, max_tokens=max_tokens),
+            json=payload,
         )
         response.raise_for_status()
         data = response.json()
@@ -499,6 +513,47 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             return data["choices"][0]["message"]["content"]
         except Exception as exc:  # pragma: no cover - depends on backend response shape
             raise RuntimeError(f"Unexpected response format: {json.dumps(data)[:400]}") from exc
+
+    def _chat_text_streaming(self, url: str, payload: Dict[str, Any]) -> str:
+        streamed_payload = {**payload, "stream": True}
+        chunks: list[str] = []
+        with self.client.stream("POST", url, headers=self._headers(), json=streamed_payload) as response:
+            response.raise_for_status()
+            for raw_line in response.iter_lines():
+                if not raw_line:
+                    continue
+                line = raw_line.strip()
+                if line.startswith("data:"):
+                    line = line[5:].strip()
+                if line == "[DONE]":
+                    break
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                delta = self._extract_stream_delta(item)
+                if not delta:
+                    continue
+                chunks.append(delta)
+                if self.stream_callback is not None:
+                    self.stream_callback(delta)
+        return "".join(chunks)
+
+    @staticmethod
+    def _extract_stream_delta(item: Dict[str, Any]) -> str:
+        choices = item.get("choices") or []
+        if not choices:
+            return ""
+        first = choices[0]
+        delta = first.get("delta") or {}
+        if isinstance(delta, dict) and delta.get("content"):
+            return str(delta["content"])
+        if first.get("text"):
+            return str(first["text"])
+        message = first.get("message") or {}
+        if isinstance(message, dict) and message.get("content"):
+            return str(message["content"])
+        return ""
 
     def _chat_json(self, schema: Type[T], system: str, user: str, temperature: float, max_tokens: int = 1800) -> T:
         text = self._chat_text(system, user, temperature=temperature, max_tokens=max_tokens)
@@ -542,6 +597,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 writer_user_prompt(memory_bundle, request.model_dump(), plan.model_dump(), hints[idx % len(hints)]),
                 temperature=self.settings.temperature_writer + idx * 0.05,
                 max_tokens=min(3000, max(1200, request.desired_length_words * 2)),
+                stream=True,
             )
             candidates.append(
                 DraftCandidate(
@@ -605,6 +661,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             ),
             temperature=self.settings.temperature_revision,
             max_tokens=min(3200, max(1200, request.desired_length_words * 2)),
+            stream=True,
         )
         return RevisionOutput(
             revised_text=revised.strip(),
@@ -642,6 +699,10 @@ class HybridProvider(BaseLLMProvider):
     def close(self) -> None:
         self.primary.close()
         self.fallback.close()
+
+    def set_stream_callback(self, callback: Optional[Callable[[str], None]]) -> None:
+        self.primary.set_stream_callback(callback)
+        self.fallback.set_stream_callback(callback)
 
     def generate_outline(self, memory_bundle: Dict[str, Any], scene_count: int) -> List[OutlineCard]:
         try:

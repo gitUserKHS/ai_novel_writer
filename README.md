@@ -124,5 +124,7 @@ pytest -q
 - `google/gemma-4-E2B-it` 기준 LoRA/QLoRA 학습 시작
 - 8GB급 GPU에서는 자동으로 `max_seq_length=2048`, `LoRA r=8` 저VRAM 프로파일 적용
 - GPU 여유 메모리와 적용된 학습 프로파일을 UI 로그에 표시
+- 학습이 끝난 `final_adapter`를 선택해서 `학습 모델로 생성` 버튼으로 바로 생성 모델에 연결
+- 빠른 시작과 다음 장면 생성은 job 스트림으로 진행 로그와 초안 일부를 실시간 표시
 
 자세한 설명은 [docs/TRAINING_KO.md](docs/TRAINING_KO.md)를 참고하세요.

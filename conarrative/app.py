@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager, closing, contextmanager
 import json
 from pathlib import Path
@@ -9,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import AppConfig
@@ -34,12 +35,16 @@ from .models import (
     StoryUpdate,
     TrainingEnvironmentOut,
     TrainingSetupRequest,
+    UseTrainedAdapterOut,
+    UseTrainedAdapterRequest,
+    JobStatus,
 )
 from .autodetect import auto_connect_settings, build_catalog_from_settings, detect_runtime_settings
 from .orchestrator import Orchestrator
 from .quickstart import build_story_from_prompt, continue_request_to_words, next_planned_outline_card, outline_to_scene_request, quickstart_settings
 from .runtime_settings import RuntimeSettingsStore
 from .train_runtime import ensure_training_environment, inspect_training_environment, run_one_click_training
+from .trained_runtime import list_trained_adapters, select_trained_adapter, start_trained_adapter_server, stop_trained_servers
 
 
 def create_app(config: AppConfig) -> FastAPI:
@@ -48,6 +53,7 @@ def create_app(config: AppConfig) -> FastAPI:
     jobs = JobManager(storage)
     training_jobs = JobManager(storage)
     initial_catalog = LocalModelCatalogOut()
+    trained_servers = {}
 
     def save_settings(settings: RuntimeSettings) -> RuntimeSettings:
         return runtime_store.save(settings)
@@ -61,6 +67,7 @@ def create_app(config: AppConfig) -> FastAPI:
         try:
             yield
         finally:
+            stop_trained_servers(trained_servers)
             jobs.shutdown()
             training_jobs.shutdown()
 
@@ -78,6 +85,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.jobs = jobs
     app.state.training_jobs = training_jobs
     app.state.model_catalog = initial_catalog
+    app.state.trained_servers = trained_servers
 
     web_dir = Path(__file__).parent / "web"
     static_dir = web_dir / "static"
@@ -197,6 +205,31 @@ def create_app(config: AppConfig) -> FastAPI:
     def get_training_environment() -> Dict[str, Any]:
         return TrainingEnvironmentOut.model_validate(inspect_training_environment(config)).model_dump()
 
+    @app.get("/api/training/adapters")
+    def get_trained_adapters(story_id: str = "") -> Dict[str, Any]:
+        return {"items": [adapter.model_dump() for adapter in list_trained_adapters(config, story_id=story_id)]}
+
+    @app.post("/api/training/adapters/use")
+    def use_trained_adapter(payload: UseTrainedAdapterRequest) -> Dict[str, Any]:
+        adapter = select_trained_adapter(config, story_id=payload.story_id, adapter_dir=payload.adapter_dir)
+        trained_settings, log_path = start_trained_adapter_server(
+            config=config,
+            adapter=adapter,
+            current_settings=current_settings(),
+            registry=app.state.trained_servers,
+            host=payload.host,
+            port=payload.port,
+        )
+        saved = save_settings(trained_settings)
+        app.state.model_catalog = build_catalog_from_settings(saved)
+        return UseTrainedAdapterOut(
+            ok=True,
+            detail=f"학습 모델을 생성 모델로 연결했습니다: {saved.model}",
+            settings=saved,
+            adapter=adapter,
+            log_path=log_path,
+        ).model_dump()
+
     @app.put("/api/runtime-settings/select-model")
     def select_runtime_model(payload: ModelSelectRequest) -> Dict[str, Any]:
         current = current_settings()
@@ -238,6 +271,32 @@ def create_app(config: AppConfig) -> FastAPI:
             if first_card is not None:
                 orchestrator.run_scene(story.id, outline_to_scene_request(first_card, payload.desired_length_words))
         return quickstart_bundle(story.id, detail)
+
+    @app.post("/api/quickstart/job")
+    def quickstart_story_job(payload: QuickstartRequest) -> Dict[str, Any]:
+        story = storage.create_story(build_story_from_prompt(payload))
+        settings, detail = quickstart_settings(current_settings())
+        job_id = str(uuid4())
+
+        def task(log):
+            log("스토리 생성 시작", 0.03)
+            with orchestrator_context(settings) as orchestrator:
+                log("아웃라인 생성 중", 0.12)
+                outline = orchestrator.generate_outline(story.id, OutlineGenerateRequest(scene_count=payload.scene_count))
+                log(f"아웃라인 {len(outline)}개 생성 완료", 0.24)
+                first_card = next_planned_outline_card(outline)
+                if first_card is not None:
+                    orchestrator.run_scene(
+                        story.id,
+                        outline_to_scene_request(first_card, payload.desired_length_words),
+                        log=lambda message, progress: log(message, 0.24 + progress * 0.74),
+                    )
+            return quickstart_bundle(story.id, detail)
+
+        jobs.enqueue(job_id=job_id, story_id=story.id, kind="quickstart_generation", fn=task)
+        job = storage.get_job(job_id)
+        assert job is not None
+        return {"job": job.model_dump(), "story": story.model_dump()}
 
     @app.get("/api/stories/{story_id}")
     def get_story(story_id: str) -> Dict[str, Any]:
@@ -362,12 +421,57 @@ def create_app(config: AppConfig) -> FastAPI:
             orchestrator.run_scene(story_id, outline_to_scene_request(next_card, continue_request_to_words(payload or ContinueStoryRequest())))
         return quickstart_bundle(story_id, detail)
 
+    @app.post("/api/stories/{story_id}/continue/job")
+    def continue_story_job(story_id: str, payload: ContinueStoryRequest | None = None) -> Dict[str, Any]:
+        ensure_story(story_id)
+        outline = storage.list_outline(story_id)
+        next_card = next_planned_outline_card(outline)
+        if next_card is None:
+            raise HTTPException(status_code=400, detail="No unused outline cards remain for this story.")
+        settings, detail = quickstart_settings(current_settings())
+        job_id = str(uuid4())
+
+        def task(log):
+            with orchestrator_context(settings) as orchestrator:
+                orchestrator.run_scene(
+                    story_id,
+                    outline_to_scene_request(next_card, continue_request_to_words(payload or ContinueStoryRequest())),
+                    log=log,
+                )
+            return quickstart_bundle(story_id, detail)
+
+        jobs.enqueue(job_id=job_id, story_id=story_id, kind="continue_generation", fn=task)
+        job = storage.get_job(job_id)
+        assert job is not None
+        return job.model_dump()
+
     @app.get("/api/jobs/{job_id}")
     def get_job(job_id: str) -> Dict[str, Any]:
         job = storage.get_job(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
         return job.model_dump()
+
+    @app.get("/api/jobs/{job_id}/events")
+    async def stream_job_events(job_id: str):
+        async def event_stream():
+            last_log_count = -1
+            while True:
+                job = storage.get_job(job_id)
+                if job is None:
+                    payload = {"error": f"Job not found: {job_id}"}
+                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                    return
+                log_count = len(job.logs)
+                terminal = job.status in {JobStatus.SUCCEEDED, JobStatus.FAILED}
+                if log_count != last_log_count or terminal:
+                    yield f"data: {json.dumps(job.model_dump(mode='json'), ensure_ascii=False)}\n\n"
+                    last_log_count = log_count
+                if terminal:
+                    return
+                await asyncio.sleep(0.5)
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
     @app.get("/api/stories/{story_id}/kg")
     def get_kg(story_id: str) -> Dict[str, Any]:

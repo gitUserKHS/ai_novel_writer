@@ -116,8 +116,19 @@ python scripts/train_qlora.py `
 2. `export-dataset`으로 데이터셋을 뽑는다.
 3. `prompt_only_teacher.jsonl`을 강한 교사 모델로 증류한다.
 4. `distilled_sft.jsonl + accepted_sft.jsonl` 중심으로 첫 LoRA를 학습한다.
-5. 결과를 로컬 모델 서버에 올려서 CoNarrative 기본 모델로 연결한다.
+5. UI의 `학습 모델로 생성` 버튼을 눌러 최신 `final_adapter`를 로컬 OpenAI-compatible 서버로 띄우고 CoNarrative 생성 모델로 연결한다.
 6. 다시 생성한 결과를 모아 2차 학습을 반복한다.
+
+## 학습한 모델로 바로 생성하기
+
+학습이 성공하면 실행 폴더 아래에 `final_adapter`가 저장됩니다. 브라우저에서 같은 스토리를 선택한 뒤 `딸깍 학습` 패널의 `학습 모델로 생성` 버튼을 누르면 앱이 자동으로 다음 작업을 합니다.
+
+- 최신 `run_metadata.json`과 `final_adapter` 찾기
+- 학습용 Python 환경에서 `scripts/serve_trained_adapter.py` 실행
+- `http://127.0.0.1:5001/v1` OpenAI-compatible 서버로 연결
+- 런타임 설정을 학습 모델로 저장
+
+첫 연결은 모델을 GPU에 올리기 때문에 시간이 걸릴 수 있습니다. 연결 후 빠른 시작이나 다음 장면 생성 버튼을 누르면 생성 스트림 박스에 진행 로그와 초안 조각이 표시됩니다.
 
 ## 품질 팁
 

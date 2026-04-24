@@ -385,6 +385,31 @@ class TrainingSetupRequest(BaseModel):
     force_reinstall: bool = False
 
 
+class TrainedAdapterOut(BaseModel):
+    story_id: str = ""
+    run_id: str = ""
+    base_model: str = ""
+    adapter_dir: str = ""
+    metadata_path: str = ""
+    created_at: str = ""
+    training_profile: str = ""
+
+
+class UseTrainedAdapterRequest(BaseModel):
+    story_id: str = ""
+    adapter_dir: str = ""
+    host: str = "127.0.0.1"
+    port: int = Field(default=5001, ge=1024, le=65535)
+
+
+class UseTrainedAdapterOut(BaseModel):
+    ok: bool = True
+    detail: str = ""
+    settings: RuntimeSettings
+    adapter: TrainedAdapterOut
+    log_path: str = ""
+
+
 class OneClickTrainingRequest(BaseModel):
     base_model: str = "google/gemma-4-E2B-it"
     hf_token: str = ""
