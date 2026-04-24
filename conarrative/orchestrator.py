@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import traceback
+import time
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from .config import AppConfig
@@ -26,7 +27,9 @@ from .models import (
     StoryState,
     utcnow_iso,
 )
+from .retrieval import request_query_text, select_relevant_kg_edges
 from .utils.text import normalize_list
+from .validators import merge_rule_issues, rule_based_consistency
 
 LogFn = Callable[[str, float], None]
 
@@ -46,12 +49,14 @@ class Orchestrator:
         scenes = self.storage.list_scenes(story_id)
         recent = scenes[-self.config.orchestration.recent_scene_memory :]
         outline = self.storage.list_outline(story_id)
+        kg_edges = self.storage.list_kg_edges(story_id)
         return {
             "story": story.model_dump(),
             "bible": bible.model_dump(),
             "state": state.model_dump(),
             "recent_scenes": [scene.model_dump() for scene in recent],
             "outline": [card.model_dump() for card in outline],
+            "kg_edges": select_relevant_kg_edges(kg_edges, limit=24),
         }
 
     def generate_outline(self, story_id: str, request: OutlineGenerateRequest) -> List[OutlineCard]:
@@ -66,6 +71,11 @@ class Orchestrator:
 
         emit("Loading story memory", 0.05)
         memory_bundle = self.build_memory_bundle(story_id)
+        memory_bundle["kg_edges"] = select_relevant_kg_edges(
+            self.storage.list_kg_edges(story_id),
+            query_text=request_query_text(request),
+            limit=24,
+        )
         story = memory_bundle["story"]
         next_scene_index = self.storage.get_next_scene_index(story_id)
 
@@ -81,6 +91,8 @@ class Orchestrator:
                     "state": memory_bundle["state"],
                     "bible": memory_bundle["bible"],
                     "recent_scenes": memory_bundle["recent_scenes"],
+                    "kg_edges": memory_bundle.get("kg_edges", []),
+                    "outline": memory_bundle.get("outline", []),
                 },
             },
         )
@@ -89,14 +101,25 @@ class Orchestrator:
         plan = self.provider.plan_scene(memory_bundle, request)
 
         emit("Generating draft candidates", 0.35)
-        candidates = self.provider.write_candidates(memory_bundle, request, plan)
+        stream_flush = self._attach_stream_logger(self.provider, emit, prefix="STREAM_DRAFT_DELTA", progress=0.38)
+        try:
+            candidates = self.provider.write_candidates(memory_bundle, request, plan)
+        finally:
+            stream_flush()
+            self.provider.set_stream_callback(None)
         if not candidates:
             raise RuntimeError("Provider returned no draft candidates")
 
         emit("Running critics", 0.55)
         candidate_evaluations: List[CandidateEvaluation] = []
         for idx, draft in enumerate(candidates, start=1):
-            consistency = self.provider.critique_consistency(memory_bundle, request, plan, draft.text)
+            consistency = self._with_rule_based_consistency(
+                self.provider.critique_consistency(memory_bundle, request, plan, draft.text),
+                memory_bundle,
+                request,
+                plan,
+                draft.text,
+            )
             creativity = self.provider.critique_creativity(memory_bundle, request, plan, draft.text)
             score = self._combined_score(consistency, creativity)
             candidate_evaluations.append(
@@ -117,13 +140,29 @@ class Orchestrator:
         final_text = winner.draft.text
         final_consistency = winner.consistency
         final_creativity = winner.creativity
-        if self.config.orchestration.auto_revision and self._needs_revision(winner.consistency.issues):
-            revised_payload = self.provider.revise_scene(memory_bundle, request, plan, winner.draft.text, winner.consistency.issues)
-            final_text = revised_payload.revised_text
-            final_consistency = self.provider.critique_consistency(memory_bundle, request, plan, final_text)
-            final_creativity = self.provider.critique_creativity(memory_bundle, request, plan, final_text)
-            winner.revised = revised_payload
-            winner.combined_score = self._combined_score(final_consistency, final_creativity)
+        if self.config.orchestration.auto_revision:
+            max_passes = max(0, int(self.config.orchestration.max_revision_passes))
+            for pass_index in range(max_passes):
+                if not self._needs_revision(final_consistency.issues):
+                    break
+                stream_flush = self._attach_stream_logger(self.provider, emit, prefix="STREAM_REVISION_DELTA", progress=0.74)
+                try:
+                    revised_payload = self.provider.revise_scene(memory_bundle, request, plan, final_text, final_consistency.issues)
+                finally:
+                    stream_flush()
+                    self.provider.set_stream_callback(None)
+                final_text = revised_payload.revised_text
+                final_consistency = self._with_rule_based_consistency(
+                    self.provider.critique_consistency(memory_bundle, request, plan, final_text),
+                    memory_bundle,
+                    request,
+                    plan,
+                    final_text,
+                )
+                final_creativity = self.provider.critique_creativity(memory_bundle, request, plan, final_text)
+                winner.revised = revised_payload
+                winner.combined_score = self._combined_score(final_consistency, final_creativity)
+                emit(f"Revision pass {pass_index + 1}/{max_passes}", 0.72 + 0.08 * ((pass_index + 1) / max(max_passes, 1)))
         emit("Extracting memory update", 0.84)
         extraction = self.provider.extract_scene(memory_bundle, request, plan, final_text)
 
@@ -189,7 +228,22 @@ class Orchestrator:
         self.storage.save_bible(story_id, new_bible)
         if request.outline_card_id:
             self.storage.mark_outline_used(story_id, request.outline_card_id)
-        self._store_training_pools(story_id, scene_id, request, plan, candidate_evaluations, accepted)
+        self._store_training_pools(
+            story_id,
+            scene_id,
+            next_scene_index,
+            {
+                "state": memory_bundle["state"],
+                "bible": memory_bundle["bible"],
+                "recent_scenes": memory_bundle["recent_scenes"],
+                "kg_edges": memory_bundle.get("kg_edges", []),
+                "outline": memory_bundle.get("outline", []),
+            },
+            request,
+            plan,
+            candidate_evaluations,
+            accepted,
+        )
 
         emit("Scene accepted", 1.0)
         return GenerationResult(
@@ -212,8 +266,48 @@ class Orchestrator:
         return round(max(0.0, score - high_penalty - medium_penalty), 3)
 
     @staticmethod
+    def _attach_stream_logger(provider: BaseLLMProvider, emit: LogFn, *, prefix: str, progress: float) -> Callable[[], None]:
+        pending: list[str] = []
+        last_emit = {"value": time.monotonic()}
+
+        def flush() -> None:
+            if not pending:
+                return
+            chunk = "".join(pending)
+            pending.clear()
+            emit(f"{prefix}:{chunk}", progress)
+            last_emit["value"] = time.monotonic()
+
+        def on_delta(delta: str) -> None:
+            pending.append(delta)
+            if sum(len(item) for item in pending) >= 180 or time.monotonic() - last_emit["value"] >= 0.6:
+                flush()
+
+        provider.set_stream_callback(on_delta)
+        return flush
+
+    @staticmethod
     def _needs_revision(issues: Sequence[ConsistencyIssue]) -> bool:
         return any(issue.severity.value in {"high", "medium"} for issue in issues)
+
+    def _with_rule_based_consistency(
+        self,
+        report: ConsistencyReport,
+        memory_bundle: Dict[str, Any],
+        request: SceneRequest,
+        plan: PlanOutput,
+        scene_text: str,
+    ) -> ConsistencyReport:
+        rule_issues = rule_based_consistency(memory_bundle, request, plan, scene_text)
+        if not rule_issues:
+            return report
+        merged_issues = merge_rule_issues(report.issues, rule_issues)
+        penalty = 0.22 * sum(1 for issue in rule_issues if issue.severity.value == "high")
+        penalty += 0.08 * sum(1 for issue in rule_issues if issue.severity.value == "medium")
+        score = round(max(0.0, float(report.score) - penalty), 3)
+        checks = normalize_list([*report.checks_run, "rule_based_mtp_lewm_guardrails"])
+        verdict = "needs_revision" if self._needs_revision(merged_issues) else report.verdict
+        return ConsistencyReport(score=score, issues=merged_issues, checks_run=checks, verdict=verdict)
 
     @staticmethod
     def _merge_bible(bible: BibleContent, extraction: ExtractionOutput) -> BibleContent:
@@ -255,6 +349,8 @@ class Orchestrator:
         self,
         story_id: str,
         scene_id: str,
+        scene_index: int,
+        memory_snapshot: Dict[str, Any],
         request: SceneRequest,
         plan: PlanOutput,
         candidate_evaluations: List[CandidateEvaluation],
@@ -266,6 +362,8 @@ class Orchestrator:
             scene_id,
             PoolType.ACCEPTED,
             {
+                "scene_index": scene_index,
+                "memory_snapshot": memory_snapshot,
                 "request": request.model_dump(),
                 "plan": plan.model_dump(),
                 "accepted_scene": accepted.model_dump(),
@@ -277,7 +375,10 @@ class Orchestrator:
                 scene_id,
                 PoolType.PAIRWISE,
                 {
+                    "scene_index": scene_index,
+                    "memory_snapshot": memory_snapshot,
                     "request": request.model_dump(),
+                    "plan": plan.model_dump(),
                     "accepted_text": accepted.accepted_text,
                     "rejected_text": candidate.draft.text,
                     "accepted_score": winner.combined_score,
@@ -291,6 +392,8 @@ class Orchestrator:
                     scene_id,
                     PoolType.HARD_NEGATIVE,
                     {
+                        "scene_index": scene_index,
+                        "memory_snapshot": memory_snapshot,
                         "request": request.model_dump(),
                         "plan": plan.model_dump(),
                         "text": candidate.draft.text,

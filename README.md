@@ -1,6 +1,6 @@
 ---
 title: CoNarrative Studio
-emoji: "📚"
+emoji: "book"
 colorFrom: blue
 colorTo: indigo
 sdk: docker
@@ -9,33 +9,35 @@ app_port: 7860
 
 # CoNarrative Studio
 
-CoNarrative Studio는 장면 단위로 이야기를 만드는 로컬 우선 스토리 스튜디오입니다.
+CoNarrative Studio는 장면 단위로 장편 소설을 만드는 로컬 우선 스토리 생성 도구입니다.
 
-지금 버전의 기본 사용 흐름은 복잡한 설정이 아니라 아래 한 줄입니다.
+초보자 기준 기본 사용 흐름은 단순합니다.
 
-1. 실행한다
-2. 브라우저를 연다
-3. 프롬프트 한 줄을 넣는다
-4. 스토리, 아웃라인, 첫 장면이 바로 만들어진다
+1. 실행한다.
+2. 브라우저에서 `http://127.0.0.1:8000/`을 연다.
+3. 상단 입력창에 만들고 싶은 소설 프롬프트를 한 번 입력한다.
+4. 첫 장면, 다음 장면, 학습을 UI 버튼으로 진행한다.
 
-기본 빠른 시작은 내장 스토리 엔진을 사용하므로 모델 연결이 없어도 바로 동작합니다.
-로컬 모델이 이미 켜져 있다면 화면의 `로컬 모델 자동 연결` 버튼을 한 번 눌러서 설정까지 저장할 수 있습니다.
-스크립트로 서버를 띄우면 앱 시작 시 한 번 자동 스캔하고, 화면에서는 모델 드롭다운으로 바로 다른 모델을 고를 수 있습니다.
+기본 빠른 시작은 내장 스토리 엔진으로 바로 동작합니다. 직접 학습한 어댑터가 있으면 생성 시 최신 학습 모델을 자동 우선 사용합니다.
 
-## 가장 쉬운 실행 방법
+## 가장 쉬운 실행
 
-Windows에서는 `scripts/run_demo.bat` 를 더블클릭하면 됩니다.
+Windows에서는 아래 파일을 더블클릭합니다.
 
-이 스크립트가 자동으로:
+```powershell
+scripts\run_demo.bat
+```
 
-1. `.venv` 가상환경 생성
-2. 필요한 패키지 설치
-3. 데모 워크스페이스 초기화
-4. 서버 실행
+스크립트가 자동으로 처리하는 작업:
 
-브라우저에서 `http://127.0.0.1:8000/` 를 열면 상단 입력창에 프롬프트만 넣어서 바로 시작할 수 있습니다.
+- `.venv` 가상환경 생성
+- 필요한 패키지 설치
+- 데모 작업공간 초기화
+- 서버 실행
 
-Linux 또는 macOS에서는 아래를 실행하면 됩니다.
+브라우저에서 `http://127.0.0.1:8000/`을 열고 프롬프트를 입력하면 됩니다.
+
+Linux 또는 macOS에서는 아래 명령을 실행합니다.
 
 ```bash
 bash scripts/run_demo.sh
@@ -51,32 +53,63 @@ python -m conarrative.cli --config configs/demo.yaml init
 python -m conarrative.cli --config configs/demo.yaml serve --host 127.0.0.1 --port 8000
 ```
 
-Windows PowerShell에서는 `source .venv/bin/activate` 대신 아래를 쓰면 됩니다.
+Windows PowerShell에서는 활성화 명령만 아래처럼 바꿉니다.
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-## 브라우저에서 하는 일
+## 브라우저에서 쓰는 법
 
-브라우저를 열면 가장 먼저 보이는 것은 빠른 시작 입력창입니다.
+- 첫 화면 상단 입력창에 프롬프트를 입력합니다.
+- `이 프롬프트로 시작`을 누르면 스토리와 첫 장면이 생성됩니다.
+- 이후에는 `다음 장면 자동 생성`을 누르면 장면 단위로 이어집니다.
+- 로컬 모델을 자동 탐색하려면 `로컬 모델 자동 연결`을 누릅니다.
+- 직접 학습한 모델이 있으면 다음 생성부터 최신 학습 모델이 자동 우선 사용됩니다.
+- 고급 설정은 화면 아래쪽의 `고급 설정` 패널에 있습니다.
 
-- 프롬프트를 입력합니다.
-- 필요하면 `로컬 모델 자동 연결` 버튼을 한 번 누릅니다.
-- 모델 드롭다운에서 현재 잡힌 로컬 모델들 중 하나를 바로 고를 수 있습니다.
-- `이 프롬프트로 시작` 버튼을 누릅니다.
-- 스토리와 첫 장면이 바로 생성됩니다.
-- 이후에는 `다음 장면 자동 생성` 버튼만 눌러 이어갈 수 있습니다.
+## 학습 모델 사용
 
-고급 설정은 아래쪽 `고급 설정` 패널 안에 숨겨져 있습니다.
+UI에서 스토리를 선택하고 `원클릭 학습` 패널을 사용합니다.
 
-## 로컬 모델 연결은 선택 사항
+1. `학습 환경 자동 준비`를 누릅니다.
+2. 필요하면 Hugging Face 토큰을 입력합니다.
+3. 필요하면 교사 모델을 선택합니다. Base URL은 비워두면 자동 탐색합니다.
+4. `원클릭 학습하고 바로 연결`을 누릅니다.
+5. 학습이 끝나면 생성된 `final_adapter`가 자동으로 생성 모델에 연결됩니다.
 
-기본 빠른 시작은 모델 연결 없이 동작합니다.
+자동 처리 내용:
 
-직접 로컬 모델 서버를 붙이고 싶을 때만 `openai_compatible` provider를 쓰면 됩니다.
+- 학습용 Python 3.12 가상환경 생성
+- CUDA PyTorch, transformers, peft, bitsandbytes 설치
+- 현재 스토리의 accepted, prompt-only, pairwise, hard-negative 데이터셋 export
+- MTP/LeWM용 `multi_target_sft.jsonl` export
+- 실행 중인 Gemma E2B/E4B 교사 모델 자동 탐색
+- Gemma E2B/E4B 교사 모델로 prompt-only 데이터 증류
+- 교사 모델이 만든 좋은 예시와 평가를 `teacher_coached_sft.jsonl`로 추가
+- LoRA/QLoRA 학습 실행
+- 학습 완료 어댑터를 OpenAI-compatible 생성 서버로 자동 연결
 
-예시는 `configs/local_backend_example.yaml` 에 있습니다.
+자세한 학습 설명은 [docs/TRAINING_KO.md](docs/TRAINING_KO.md)를 참고하세요.
+
+## MTP/LeWM 반영 사항
+
+현재 버전은 `ai_novel_writer_mtp_lewm_complete.zip`의 핵심 구조를 반영했습니다.
+
+- 장면 계획에 미래 상태 예측, 역방향 전제 조건, 회수 목표, 모순 위험을 저장합니다.
+- 메모리 프롬프트에 관련 Narrative KG 엣지를 함께 넣습니다.
+- 생성 결과를 LLM 평가와 규칙 기반 검증으로 같이 점검합니다.
+- 실패한 장면은 여러 번 수정 패스를 돌 수 있습니다.
+- 학습 데이터에 메모리 스냅샷과 멀티 타깃 SFT 데이터를 포함합니다.
+- QLoRA 학습은 프롬프트 토큰 손실을 마스킹하고 assistant 답변만 학습하도록 처리합니다.
+
+자세한 설계 설명은 [docs/NARRATIVE_MTP_LEWM_KO.md](docs/NARRATIVE_MTP_LEWM_KO.md)를 참고하세요.
+
+## 로컬 모델 연결
+
+직접 로컬 모델 서버를 붙이고 싶을 때는 `openai_compatible` provider를 사용합니다.
+
+예시는 `configs/local_backend_example.yaml`에 있습니다.
 
 ```yaml
 backend:
@@ -86,45 +119,23 @@ backend:
   api_key: not-needed
 ```
 
-백엔드는 `/v1/models` 와 `/v1/chat/completions` 를 제공해야 합니다.
+백엔드는 `/v1/models`와 `/v1/chat/completions`를 제공해야 합니다.
 
 ## Hugging Face Spaces
 
-이 저장소는 Docker Space로 바로 올릴 수 있게 정리되어 있습니다.
+이 저장소는 Docker Space로 배포할 수 있게 정리되어 있습니다.
 
-필요하면 아래 환경 변수를 Space에 넣으면 됩니다.
+필요하면 아래 환경 변수를 Space에 넣습니다.
 
 - `CONARRATIVE_PROVIDER=openai_compatible`
 - `CONARRATIVE_BASE_URL`
 - `CONARRATIVE_MODEL`
 - `CONARRATIVE_API_KEY`
 
-Spaces는 `app.py` 를 실행하고 기본적으로 `0.0.0.0:$PORT` 에서 뜹니다. 데이터는 `/data/conarrative` 아래에 저장합니다.
+Spaces에서는 `app.py`가 실행되고 기본적으로 `0.0.0.0:$PORT`에서 열립니다. 데이터는 `/data/conarrative` 아래에 저장됩니다.
 
 ## 테스트
 
 ```bash
 pytest -q
 ```
-
-## 원클릭 학습
-
-브라우저 UI에서 스토리를 하나 선택한 뒤 `딸깍 학습` 패널을 사용하면 됩니다.
-
-1. `학습 환경 자동 준비`
-2. 필요하면 `Hugging Face 토큰` 입력
-3. `이 스토리로 딸깍 학습 시작`
-
-자동 처리 내용:
-
-- 학습용 Python 3.12 venv 생성
-- CUDA PyTorch, transformers, peft, bitsandbytes 설치
-- 현재 스토리 데이터셋 export
-- 현재 연결된 OpenAI-compatible 모델이 있으면 prompt-only 데이터 증류
-- `google/gemma-4-E2B-it` 기준 LoRA/QLoRA 학습 시작
-- 8GB급 GPU에서는 자동으로 `max_seq_length=2048`, `LoRA r=8` 저VRAM 프로파일 적용
-- GPU 여유 메모리와 적용된 학습 프로파일을 UI 로그에 표시
-- 학습이 끝난 `final_adapter`를 선택해서 `학습 모델로 생성` 버튼으로 바로 생성 모델에 연결
-- 빠른 시작과 다음 장면 생성은 job 스트림으로 진행 로그와 초안 일부를 실시간 표시
-
-자세한 설명은 [docs/TRAINING_KO.md](docs/TRAINING_KO.md)를 참고하세요.

@@ -51,6 +51,17 @@ def render_memory_context(bundle: Dict[str, Any]) -> str:
             parts.append(
                 f"- Scene {scene['scene_index']} [{scene['time_label']} @ {scene['location']}] {scene['title']}: {scene['summary']}"
             )
+    kg_edges = bundle.get("kg_edges") or []
+    if kg_edges:
+        parts.append("Relevant story graph edges:")
+        for edge in kg_edges[-20:]:
+            meta = edge.get("metadata") or {}
+            scene_hint = f" scene={edge.get('scene_id')}" if edge.get("scene_id") else ""
+            confidence = f" confidence={meta.get('confidence')}" if meta.get("confidence") is not None else ""
+            parts.append(
+                f"- {edge.get('source','')} --{edge.get('relation','')}--> {edge.get('target','')} "
+                f"type={edge.get('edge_type','event')}{scene_hint}{confidence}".strip()
+            )
     if outline:
         parts.append("Outline cards:")
         for card in outline:
@@ -129,6 +140,12 @@ def planner_user_prompt(bundle: Dict[str, Any], request: Dict[str, Any]) -> str:
 
         Write every string field in Korean.
 
+        Think like a narrative world model:
+        - Predict what this scene should make true now and within the next 1~3 scenes.
+        - Work backward from future payoffs to the prerequisites this scene must plant.
+        - List contradiction risks before writing so the writer can avoid them.
+        - Do not reveal hidden facts to POV characters unless the memory says they already know them.
+
         Output JSON with shape:
         {{
           "scene_title": "",
@@ -137,7 +154,25 @@ def planner_user_prompt(bundle: Dict[str, Any], request: Dict[str, Any]) -> str:
           "expected_reveals": [""],
           "expected_new_threads": [""],
           "expected_resolved_threads": [""],
-          "expected_state_delta": {{}}
+          "expected_state_delta": {{}},
+          "future_state_predictions": [
+            {{
+              "horizon": 1,
+              "state_summary": "",
+              "required_setup": [""],
+              "payoff_signals": [""],
+              "risk_notes": [""]
+            }}
+          ],
+          "backward_prerequisites": [
+            {{
+              "target": "",
+              "prerequisite": "",
+              "reason": ""
+            }}
+          ],
+          "payoff_targets": [""],
+          "contradiction_risks": [""]
         }}
         """
     ).strip()
@@ -177,6 +212,8 @@ def writer_user_prompt(bundle: Dict[str, Any], request: Dict[str, Any], plan: Di
         - Keep the requested POV, location, and time label coherent.
         - Include all must_include items unless they violate continuity.
         - Avoid all must_avoid items.
+        - Plant the backward_prerequisites/payoff_targets subtly through action, image, or dialogue.
+        - Preserve the future_state_predictions without explaining them as a plan.
         - Target the requested emotional arc and approximate length.
         - Write only the scene prose in Korean.
         """

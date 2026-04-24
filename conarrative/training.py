@@ -4,12 +4,18 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .models import PoolType
+from .models import AcceptedScene, PoolType
+from .world_model import dump_multi_target_payload
 
 NOVELIST_SYSTEM_PROMPT = (
     "당신은 한국어 장편소설용 장면을 쓰는 작가다. "
-    "항상 자연스러운 한국어로만 답하고, 사용자의 요구와 기억 문맥을 강하게 따른다. "
+    "항상 자연스러운 한국어로만 답하고 사용자의 요구와 기억 문맥을 강하게 따른다. "
     "설명, 메타 발화, 제목, 주석 없이 장면 본문만 작성한다."
+)
+
+MULTI_TARGET_SYSTEM_PROMPT = (
+    "당신은 한국어 장편소설용 장면을 쓰는 작가이자 서사 월드모델이다. "
+    "JSON만 출력하고, draft에는 장면 본문을, 나머지 필드에는 미래 상태 예측과 상태 변화를 기록한다."
 )
 
 
@@ -17,6 +23,7 @@ def build_training_user_prompt(
     request: Dict[str, Any],
     memory_snapshot: Optional[Dict[str, Any]] = None,
     plan: Optional[Dict[str, Any]] = None,
+    multi_target: bool = False,
 ) -> str:
     sections: List[str] = [
         "다음 정보를 바탕으로 한국어 소설 장면 하나를 작성하세요.",
@@ -28,16 +35,29 @@ def build_training_user_prompt(
         sections.extend(["", "기억 문맥", _render_memory_snapshot(memory_snapshot)])
     if plan:
         sections.extend(["", "장면 계획", _render_plan(plan)])
-    sections.extend(
-        [
-            "",
-            "지침",
-            "- 출력은 자연스러운 한국어 장면 본문만 작성합니다.",
-            "- POV, 시간, 장소, 목표, 감정선, 포함/금지 조건을 지킵니다.",
-            "- 개연성과 인물 지식 상태를 유지합니다.",
-            "- 불필요한 영어 문장, 메타 설명, 소제목을 넣지 않습니다.",
-        ]
-    )
+    if multi_target:
+        sections.extend(
+            [
+                "",
+                "지침",
+                "- JSON만 출력합니다.",
+                "- draft에는 자연스러운 한국어 장면 본문을 작성합니다.",
+                "- summary, state_delta, kg_edges, future_predictions를 함께 작성합니다.",
+                "- future_predictions에는 다음 1~3장면의 상태 예측, 역추적 선행조건, 회수 목표, 모순 위험을 포함합니다.",
+                "- POV, 시간, 장소, 목표, 감정선, 포함/금지 조건을 지킵니다.",
+            ]
+        )
+    else:
+        sections.extend(
+            [
+                "",
+                "지침",
+                "- 출력은 자연스러운 한국어 장면 본문만 작성합니다.",
+                "- POV, 시간, 장소, 목표, 감정선, 포함/금지 조건을 지킵니다.",
+                "- 개연성과 인물 지식 상태를 유지합니다.",
+                "- 불필요한 영어 문장, 메타 설명, 소제목을 넣지 않습니다.",
+            ]
+        )
     return "\n".join(sections).strip()
 
 
@@ -48,18 +68,18 @@ def export_training_corpus(records: Iterable[Dict[str, Any]], out_dir: str | Pat
 
     prompt_only_index = _build_prompt_only_index(rows)
     accepted_sft: List[Dict[str, Any]] = []
+    multi_target_sft: List[Dict[str, Any]] = []
     prompt_only_teacher: List[Dict[str, Any]] = []
     pairwise_dpo: List[Dict[str, Any]] = []
     hard_negative: List[Dict[str, Any]] = []
 
     for row in rows:
         pool_type = row["pool_type"]
-        payload = row["payload"]
-
         if pool_type == PoolType.PROMPT_ONLY.value:
             prompt_only_teacher.append(_prompt_only_to_teacher_sample(row))
         elif pool_type == PoolType.ACCEPTED.value:
             accepted_sft.append(_accepted_to_sft_sample(row, prompt_only_index))
+            multi_target_sft.append(_accepted_to_multi_target_sample(row, prompt_only_index))
         elif pool_type == PoolType.PAIRWISE.value:
             pairwise_dpo.append(_pairwise_to_dpo_sample(row, prompt_only_index))
         elif pool_type == PoolType.HARD_NEGATIVE.value:
@@ -69,11 +89,13 @@ def export_training_corpus(records: Iterable[Dict[str, Any]], out_dir: str | Pat
 
     files = {
         "accepted_sft": target / "accepted_sft.jsonl",
+        "multi_target_sft": target / "multi_target_sft.jsonl",
         "prompt_only_teacher": target / "prompt_only_teacher.jsonl",
         "pairwise_dpo": target / "pairwise_dpo.jsonl",
         "hard_negative": target / "hard_negative.jsonl",
     }
     _write_jsonl(files["accepted_sft"], accepted_sft)
+    _write_jsonl(files["multi_target_sft"], multi_target_sft)
     _write_jsonl(files["prompt_only_teacher"], prompt_only_teacher)
     _write_jsonl(files["pairwise_dpo"], pairwise_dpo)
     _write_jsonl(files["hard_negative"], hard_negative)
@@ -81,6 +103,7 @@ def export_training_corpus(records: Iterable[Dict[str, Any]], out_dir: str | Pat
     manifest = {
         "counts": {
             "accepted_sft": len(accepted_sft),
+            "multi_target_sft": len(multi_target_sft),
             "prompt_only_teacher": len(prompt_only_teacher),
             "pairwise_dpo": len(pairwise_dpo),
             "hard_negative": len(hard_negative),
@@ -99,9 +122,9 @@ def _accepted_to_sft_sample(
 ) -> Dict[str, Any]:
     payload = row["payload"]
     accepted_scene = payload["accepted_scene"]
-    scene_index = int(accepted_scene["scene_index"])
+    scene_index = int(payload.get("scene_index") or accepted_scene["scene_index"])
     prompt_only = prompt_only_index.get((row["story_id"], scene_index), {})
-    memory_snapshot = prompt_only.get("memory_snapshot")
+    memory_snapshot = payload.get("memory_snapshot") or prompt_only.get("memory_snapshot")
     request = payload["request"]
     plan = payload.get("plan")
 
@@ -117,6 +140,42 @@ def _accepted_to_sft_sample(
             "scene_index": scene_index,
             "pool_type": row["pool_type"],
             "source": "accepted",
+        },
+    }
+
+
+def _accepted_to_multi_target_sample(
+    row: Dict[str, Any],
+    prompt_only_index: Dict[Tuple[str, int], Dict[str, Any]],
+) -> Dict[str, Any]:
+    payload = row["payload"]
+    accepted_scene = AcceptedScene.model_validate(payload["accepted_scene"])
+    scene_index = int(payload.get("scene_index") or accepted_scene.scene_index)
+    prompt_only = prompt_only_index.get((row["story_id"], scene_index), {})
+    memory_snapshot = payload.get("memory_snapshot") or prompt_only.get("memory_snapshot")
+    request = payload["request"]
+    plan = payload.get("plan")
+
+    return {
+        "messages": [
+            {"role": "system", "content": MULTI_TARGET_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": build_training_user_prompt(
+                    request,
+                    memory_snapshot=memory_snapshot,
+                    plan=plan,
+                    multi_target=True,
+                ),
+            },
+            {"role": "assistant", "content": dump_multi_target_payload(accepted_scene)},
+        ],
+        "metadata": {
+            "story_id": row["story_id"],
+            "scene_id": row["scene_id"],
+            "scene_index": scene_index,
+            "pool_type": row["pool_type"],
+            "source": "accepted_multi_target",
         },
     }
 
@@ -147,9 +206,13 @@ def _pairwise_to_dpo_sample(
 ) -> Dict[str, Any]:
     payload = row["payload"]
     request = payload["request"]
-    scene_index = int(request.get("scene_index") or 0)
+    scene_index = int(payload.get("scene_index") or request.get("scene_index") or 0)
     prompt_only = prompt_only_index.get((row["story_id"], scene_index), {})
-    prompt = build_training_user_prompt(request, memory_snapshot=prompt_only.get("memory_snapshot"))
+    prompt = build_training_user_prompt(
+        request,
+        memory_snapshot=payload.get("memory_snapshot") or prompt_only.get("memory_snapshot"),
+        plan=payload.get("plan"),
+    )
     return {
         "prompt": prompt,
         "chosen": payload["accepted_text"],
@@ -171,7 +234,7 @@ def _hard_negative_sample(
 ) -> Dict[str, Any]:
     payload = row["payload"]
     request = payload["request"]
-    scene_index = int(request.get("scene_index") or 0)
+    scene_index = int(payload.get("scene_index") or request.get("scene_index") or 0)
     prompt_only = prompt_only_index.get((row["story_id"], scene_index), {})
     return {
         "messages": [
@@ -180,7 +243,7 @@ def _hard_negative_sample(
                 "role": "user",
                 "content": build_training_user_prompt(
                     request,
-                    memory_snapshot=prompt_only.get("memory_snapshot"),
+                    memory_snapshot=payload.get("memory_snapshot") or prompt_only.get("memory_snapshot"),
                     plan=payload.get("plan"),
                 ),
             },
@@ -242,6 +305,26 @@ def _render_plan(plan: Dict[str, Any]) -> str:
         lines.append("- 새 떡밥: " + " | ".join(plan["expected_new_threads"]))
     if plan.get("expected_resolved_threads"):
         lines.append("- 회수 떡밥: " + " | ".join(plan["expected_resolved_threads"]))
+    if plan.get("payoff_targets"):
+        lines.append("- 미래 회수 목표: " + " | ".join(plan["payoff_targets"]))
+    if plan.get("backward_prerequisites"):
+        rendered = []
+        for item in plan["backward_prerequisites"]:
+            if isinstance(item, dict):
+                rendered.append(f"{item.get('target','')} <- {item.get('prerequisite','')} ({item.get('reason','')})")
+            else:
+                rendered.append(str(item))
+        lines.append("- 역추적 선행조건: " + " | ".join(rendered))
+    if plan.get("future_state_predictions"):
+        rendered = []
+        for item in plan["future_state_predictions"]:
+            if isinstance(item, dict):
+                rendered.append(f"H+{item.get('horizon','?')}: {item.get('state_summary','')}")
+            else:
+                rendered.append(str(item))
+        lines.append("- 미래 상태 예측: " + " | ".join(rendered))
+    if plan.get("contradiction_risks"):
+        lines.append("- 모순 위험: " + " | ".join(plan["contradiction_risks"]))
     return "\n".join(lines)
 
 
@@ -249,6 +332,7 @@ def _render_memory_snapshot(snapshot: Dict[str, Any]) -> str:
     state = snapshot.get("state", {})
     bible = snapshot.get("bible", {})
     recent = snapshot.get("recent_scenes", [])
+    kg_edges = snapshot.get("kg_edges", [])
     lines: List[str] = []
     if bible.get("static_facts"):
         lines.append("- 고정 사실: " + " | ".join(bible["static_facts"]))
@@ -272,6 +356,10 @@ def _render_memory_snapshot(snapshot: Dict[str, Any]) -> str:
             lines.append(
                 f"  - Scene {scene.get('scene_index', '')} / {scene.get('time_label', '')} / {scene.get('location', '')}: {scene.get('summary', '')}"
             )
+    if kg_edges:
+        lines.append("- 관련 KG:")
+        for edge in kg_edges[-12:]:
+            lines.append(f"  - {edge.get('source','')} --{edge.get('relation','')}--> {edge.get('target','')}")
     return "\n".join(lines) if lines else "- 별도 기억 정보 없음"
 
 

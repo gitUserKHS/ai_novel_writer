@@ -352,6 +352,14 @@ p {
   margin-top: 14px;
 }
 
+.trained-model-tools {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 12px;
+}
+
 .story-summary {
   display: flex;
   flex-direction: column;
@@ -537,6 +545,19 @@ p {
   max-height: 420px;
 }
 
+.generation-stream {
+  display: none;
+  margin-top: 12px;
+  max-height: 360px;
+  background: rgba(17, 19, 24, 0.92);
+  color: #ecffe1;
+  border-color: rgba(200, 255, 0, 0.32);
+}
+
+.generation-stream.active {
+  display: block;
+}
+
 .inline-box {
   margin-top: 10px;
 }
@@ -676,6 +697,7 @@ p {
   .content-grid,
   .advanced-grid,
   .training-grid,
+  .trained-model-tools,
   .scene-layout,
   .stats-grid,
   .command-strip {

@@ -161,6 +161,20 @@ class PlanBeat(BaseModel):
     purpose: str
 
 
+class FutureStatePrediction(BaseModel):
+    horizon: int = Field(default=1, ge=1, le=12)
+    state_summary: str = ""
+    required_setup: List[str] = Field(default_factory=list)
+    payoff_signals: List[str] = Field(default_factory=list)
+    risk_notes: List[str] = Field(default_factory=list)
+
+
+class ReversePrerequisite(BaseModel):
+    target: str = ""
+    prerequisite: str = ""
+    reason: str = ""
+
+
 class PlanOutput(BaseModel):
     scene_title: str
     synopsis: str
@@ -169,6 +183,10 @@ class PlanOutput(BaseModel):
     expected_new_threads: List[str] = Field(default_factory=list)
     expected_resolved_threads: List[str] = Field(default_factory=list)
     expected_state_delta: Dict[str, Any] = Field(default_factory=dict)
+    future_state_predictions: List[FutureStatePrediction] = Field(default_factory=list)
+    backward_prerequisites: List[ReversePrerequisite] = Field(default_factory=list)
+    payoff_targets: List[str] = Field(default_factory=list)
+    contradiction_risks: List[str] = Field(default_factory=list)
 
 
 class DraftCandidate(BaseModel):
@@ -411,7 +429,7 @@ class UseTrainedAdapterOut(BaseModel):
 
 
 class OneClickTrainingRequest(BaseModel):
-    base_model: str = "google/gemma-4-E2B-it"
+    base_model: str = "Qwen/Qwen2.5-3B-Instruct"
     hf_token: str = ""
     epochs: float = Field(default=1.0, ge=0.05, le=20.0)
     per_device_batch_size: int = Field(default=1, ge=1, le=8)
@@ -421,8 +439,10 @@ class OneClickTrainingRequest(BaseModel):
     lora_alpha: int = Field(default=0, ge=0, le=512)
     use_distillation: bool = True
     teacher_base_url: str = ""
-    teacher_model: str = ""
+    teacher_model: str = "google/gemma-4-E2B-it"
     teacher_api_key: str = ""
+    teacher_coaching: bool = True
+    teacher_variants_per_prompt: int = Field(default=1, ge=0, le=3)
 
 
 class MemoryBundle(BaseModel):

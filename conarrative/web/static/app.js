@@ -14,6 +14,9 @@ const uiState = {
   trainingJobId: null,
   trainingJob: null,
   trainingPollTimer: null,
+  trainedAdapters: [],
+  generationJob: null,
+  generationEventSource: null,
 };
 
 const els = {
@@ -39,10 +42,17 @@ const els = {
   trainingBaseModel: document.getElementById("training-base-model"),
   trainingEpochs: document.getElementById("training-epochs"),
   trainingHfToken: document.getElementById("training-hf-token"),
+  trainingTeacherBaseUrl: document.getElementById("training-teacher-base-url"),
+  trainingTeacherModel: document.getElementById("training-teacher-model"),
+  trainingTeacherVariants: document.getElementById("training-teacher-variants"),
   trainingSetupBtn: document.getElementById("training-setup-btn"),
   trainingStartBtn: document.getElementById("training-start-btn"),
+  trainedModelPicker: document.getElementById("trained-model-picker"),
+  trainedRefreshBtn: document.getElementById("trained-refresh-btn"),
+  trainedUseBtn: document.getElementById("trained-use-btn"),
   trainingTeacherNote: document.getElementById("training-teacher-note"),
   trainingLog: document.getElementById("training-log"),
+  generationStream: document.getElementById("generation-stream"),
   outlineList: document.getElementById("outline-list"),
   sceneCount: document.getElementById("scene-count"),
   sceneList: document.getElementById("scene-list"),
@@ -127,6 +137,8 @@ function updateStoryButtons(enabled) {
   els.deleteStoryBtn.disabled = !enabled;
   els.trainingSetupBtn.disabled = !enabled;
   els.trainingStartBtn.disabled = !enabled;
+  els.trainedRefreshBtn.disabled = !enabled;
+  els.trainedUseBtn.disabled = !enabled || !uiState.trainedAdapters.length;
 }
 
 function renderEmptyStoryState() {
@@ -139,6 +151,7 @@ function renderEmptyStoryState() {
   uiState.state = {};
   uiState.datasets = {};
   uiState.kg = [];
+  uiState.trainedAdapters = [];
   els.storyTitle.textContent = "스토리를 선택하거나 새로 시작하세요";
   els.storySummary.textContent = "왼쪽 목록에서 기존 스토리를 열거나 위에서 프롬프트 한 줄로 새 스토리를 시작할 수 있습니다.";
   els.outlineList.innerHTML = `<div class="empty-state">빠른 시작을 실행하면 여기에 아웃라인이 생깁니다.</div>`;
@@ -150,6 +163,7 @@ function renderEmptyStoryState() {
   els.datasetViewer.textContent = "{}";
   els.kgViewer.textContent = "[]";
   els.sceneCount.textContent = "0개";
+  renderTrainedAdapters();
   updateStoryButtons(false);
   renderTrainingPanel();
 }
@@ -346,13 +360,13 @@ function renderArtifacts() {
 function renderTrainingPanel() {
   const env = uiState.trainingEnv;
   const hasStory = Boolean(uiState.selectedStoryId);
-  const currentTeacher = uiState.modelCatalog?.current
-    ? `${uiState.modelCatalog.current.source} / ${uiState.modelCatalog.current.model}`
-    : "현재 교사 모델 없음";
+  const currentTeacher = `${els.trainingTeacherModel?.value || "google/gemma-4-E2B-it"} @ ${
+    els.trainingTeacherBaseUrl?.value?.trim() || "자동 탐색"
+  }`;
   if (!env) {
     els.trainingReadyChip.textContent = "학습 환경 확인 중";
     els.trainingSummary.textContent = "학습 환경 상태를 불러오는 중입니다.";
-    els.trainingTeacherNote.textContent = `현재 교사 모델: ${currentTeacher}`;
+    els.trainingTeacherNote.textContent = `학습 교사 모델: ${currentTeacher}. 비워두면 실행 중인 Gemma E2B/E4B를 자동 탐색합니다.`;
     els.trainingLog.textContent = "학습 로그가 여기 표시됩니다.";
     els.trainingSetupBtn.disabled = true;
     els.trainingStartBtn.disabled = true;
@@ -360,7 +374,7 @@ function renderTrainingPanel() {
   }
   els.trainingReadyChip.textContent = env.ready ? "학습 환경 준비 완료" : "학습 환경 준비 필요";
   els.trainingSummary.textContent = formatTrainingSummary(env);
-  els.trainingTeacherNote.textContent = `현재 교사 모델: ${currentTeacher}`;
+  els.trainingTeacherNote.textContent = `학습 교사 모델: ${currentTeacher}. 학습 후 최신 어댑터가 자동으로 생성 모델에 연결됩니다.`;
   if (uiState.trainingJob && uiState.trainingJob.story_id === uiState.selectedStoryId) {
     const logs = (uiState.trainingJob.logs || []).map((item) => `[${item.time}] ${item.message}`);
     const header = [
@@ -379,12 +393,118 @@ function renderTrainingPanel() {
   }
   els.trainingSetupBtn.disabled = !hasStory;
   els.trainingStartBtn.disabled = !hasStory;
+  els.trainedRefreshBtn.disabled = !hasStory;
+  els.trainedUseBtn.disabled = !hasStory || !uiState.trainedAdapters.length;
+  renderTrainedAdapters();
+}
+
+function renderTrainedAdapters() {
+  const adapters = uiState.trainedAdapters || [];
+  if (!adapters.length) {
+    els.trainedModelPicker.innerHTML = `<option value="">아직 학습된 모델이 없습니다</option>`;
+    els.trainedUseBtn.disabled = true;
+    return;
+  }
+  els.trainedModelPicker.innerHTML = adapters
+    .map((adapter, index) => {
+      const label = `${adapter.run_id || `run ${index + 1}`} / ${adapter.base_model || "base model"} / ${adapter.training_profile || "profile"}`;
+      return `<option value="${escapeHtml(adapter.adapter_dir)}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  els.trainedUseBtn.disabled = !uiState.selectedStoryId;
 }
 
 function stopTrainingJobPolling() {
   if (uiState.trainingPollTimer) {
     clearTimeout(uiState.trainingPollTimer);
     uiState.trainingPollTimer = null;
+  }
+}
+
+function stopGenerationStream() {
+  if (uiState.generationEventSource) {
+    uiState.generationEventSource.close();
+    uiState.generationEventSource = null;
+  }
+}
+
+function renderGenerationJob(job) {
+  uiState.generationJob = job;
+  const logs = job.logs || [];
+  const streamText = logs
+    .filter((item) => String(item.message || "").startsWith("STREAM_"))
+    .map((item) => String(item.message).replace(/^STREAM_[A-Z_]+:/, ""))
+    .join("");
+  const statusLines = logs
+    .filter((item) => !String(item.message || "").startsWith("STREAM_"))
+    .slice(-10)
+    .map((item) => `[${item.time}] ${item.message}`);
+  const header = [
+    `job: ${job.kind}`,
+    `status: ${job.status}`,
+    `progress: ${Math.round((job.progress || 0) * 100)}%`,
+    job.error_text ? `error: ${job.error_text}` : "",
+    "",
+  ].filter(Boolean);
+  const body = streamText
+    ? ["실시간 초안", "", streamText.slice(-12000), "", "진행 로그", ...statusLines]
+    : ["진행 로그", ...statusLines];
+  els.generationStream.classList.add("active");
+  els.generationStream.textContent = header.concat(body).join("\n");
+}
+
+function waitForJobStream(jobId, renderer = renderGenerationJob) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (job) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      stopGenerationStream();
+      if (job.status === "failed") {
+        reject(new Error(job.error_text || job.message || "job failed"));
+        return;
+      }
+      resolve(job);
+    };
+    if (window.EventSource) {
+      stopGenerationStream();
+      const source = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/events`);
+      uiState.generationEventSource = source;
+      source.onmessage = (event) => {
+        const job = JSON.parse(event.data);
+        if (job.error) {
+          reject(new Error(job.error));
+          source.close();
+          return;
+        }
+        renderer(job);
+        if (job.status === "succeeded" || job.status === "failed") {
+          finish(job);
+        }
+      };
+      source.onerror = () => {
+        source.close();
+        pollJobUntilDone(jobId, renderer).then(resolve).catch(reject);
+      };
+      return;
+    }
+    pollJobUntilDone(jobId, renderer).then(resolve).catch(reject);
+  });
+}
+
+async function pollJobUntilDone(jobId, renderer) {
+  while (true) {
+    const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+    renderer(job);
+    if (job.status === "succeeded") {
+      return job;
+    }
+    if (job.status === "failed") {
+      throw new Error(job.error_text || job.message || "job failed");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 750));
   }
 }
 
@@ -409,6 +529,17 @@ async function loadHealth() {
 async function loadTrainingEnvironment() {
   uiState.trainingEnv = await api("/api/training/environment");
   renderTrainingPanel();
+}
+
+async function loadTrainedAdapters() {
+  if (!uiState.selectedStoryId) {
+    uiState.trainedAdapters = [];
+    renderTrainedAdapters();
+    return;
+  }
+  const data = await api(`/api/training/adapters?story_id=${encodeURIComponent(uiState.selectedStoryId)}`);
+  uiState.trainedAdapters = data.items || [];
+  renderTrainedAdapters();
 }
 
 async function loadSettings() {
@@ -467,6 +598,7 @@ async function selectStory(storyId) {
   renderScenes();
   renderStoryStats();
   renderArtifacts();
+  await loadTrainedAdapters();
   renderTrainingPanel();
 }
 
@@ -476,7 +608,9 @@ async function handleQuickstart() {
     alert("프롬프트를 입력하세요.");
     return;
   }
-  const result = await api("/api/quickstart", {
+  els.generationStream.classList.add("active");
+  els.generationStream.textContent = "생성 job을 시작하는 중입니다...";
+  const started = await api("/api/quickstart/job", {
     method: "POST",
     body: JSON.stringify({
       prompt,
@@ -484,9 +618,13 @@ async function handleQuickstart() {
       desired_length_words: Number(els.quickstartWordCount.value || 900),
     }),
   });
+  els.quickstartNote.textContent = "생성 중입니다. 아래 스트림에서 진행 상황을 확인하세요.";
+  const job = await waitForJobStream(started.job.id);
+  const result = job.result || {};
   els.quickstartNote.textContent = result.detail || "스토리를 만들었습니다.";
+  uiState.selectedStoryId = job.story_id;
   await Promise.all([loadStories(), loadHealth(), loadModelCatalog()]);
-  await selectStory(result.story.id);
+  await selectStory(job.story_id);
 }
 
 async function handleAutoConnect() {
@@ -522,15 +660,19 @@ async function handleContinue() {
   if (!uiState.selectedStoryId) {
     return;
   }
-  const result = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/continue`, {
+  els.generationStream.classList.add("active");
+  els.generationStream.textContent = "다음 장면 생성 job을 시작하는 중입니다...";
+  const started = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/continue/job`, {
     method: "POST",
     body: JSON.stringify({
       desired_length_words: Number(els.quickstartWordCount.value || 900),
     }),
   });
+  const job = await waitForJobStream(started.id);
+  const result = job.result || {};
   els.quickstartNote.textContent = result.detail || "다음 장면을 만들었습니다.";
   await Promise.all([loadStories(), loadHealth(), loadModelCatalog()]);
-  await selectStory(result.story.id);
+  await selectStory(job.story_id);
 }
 
 async function handleExport() {
@@ -622,14 +764,42 @@ async function handleTrainingStart() {
   const job = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/training/auto`, {
     method: "POST",
     body: JSON.stringify({
-      base_model: els.trainingBaseModel.value.trim() || "google/gemma-4-E2B-it",
+      base_model: els.trainingBaseModel.value.trim() || "Qwen/Qwen2.5-3B-Instruct",
       hf_token: els.trainingHfToken.value.trim(),
       epochs: Number(els.trainingEpochs.value || 1.0),
       use_distillation: true,
+      teacher_base_url: els.trainingTeacherBaseUrl.value.trim(),
+      teacher_model: els.trainingTeacherModel.value || "google/gemma-4-E2B-it",
+      teacher_coaching: true,
+      teacher_variants_per_prompt: Number(els.trainingTeacherVariants.value || 1),
     }),
   });
-  els.quickstartNote.textContent = "원클릭 학습 job을 시작했습니다.";
+  els.quickstartNote.textContent = "원클릭 학습을 시작했습니다. 완료되면 최신 학습 모델을 자동으로 연결합니다.";
   await pollTrainingJob(job.id);
+  await loadTrainedAdapters();
+  await Promise.all([loadSettings(), loadHealth(), loadModelCatalog()]);
+}
+
+async function handleUseTrainedModel() {
+  if (!uiState.selectedStoryId) {
+    return;
+  }
+  const adapterDir = els.trainedModelPicker.value;
+  if (!adapterDir) {
+    els.quickstartNote.textContent = "먼저 학습을 완료한 모델을 선택하세요.";
+    return;
+  }
+  els.quickstartNote.textContent = "학습 모델 서버를 시작하고 생성 모델로 연결하는 중입니다. 첫 실행은 모델 로딩 때문에 시간이 걸릴 수 있습니다.";
+  const result = await api("/api/training/adapters/use", {
+    method: "POST",
+    body: JSON.stringify({
+      story_id: uiState.selectedStoryId,
+      adapter_dir: adapterDir,
+      port: 5001,
+    }),
+  });
+  els.quickstartNote.textContent = result.detail || "학습 모델을 생성 모델로 연결했습니다.";
+  await Promise.all([loadSettings(), loadHealth(), loadModelCatalog()]);
 }
 
 async function handleSaveSettings(event) {
@@ -708,6 +878,11 @@ function bindEvents() {
   els.deleteStoryBtn.addEventListener("click", setBusy(els.deleteStoryBtn, "삭제 중...", handleDeleteStory));
   els.trainingSetupBtn.addEventListener("click", setBusy(els.trainingSetupBtn, "학습 환경 준비 중...", handleTrainingSetup));
   els.trainingStartBtn.addEventListener("click", setBusy(els.trainingStartBtn, "학습 시작 중...", handleTrainingStart));
+  els.trainedRefreshBtn.addEventListener("click", setBusy(els.trainedRefreshBtn, "새로고침 중...", loadTrainedAdapters));
+  els.trainedUseBtn.addEventListener("click", setBusy(els.trainedUseBtn, "연결 중...", handleUseTrainedModel));
+  els.trainingTeacherBaseUrl.addEventListener("input", renderTrainingPanel);
+  els.trainingTeacherModel.addEventListener("change", renderTrainingPanel);
+  els.trainingTeacherVariants.addEventListener("input", renderTrainingPanel);
   els.modelPicker.addEventListener("change", async () => {
     els.modelPicker.disabled = true;
     try {

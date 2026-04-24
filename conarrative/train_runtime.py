@@ -15,7 +15,8 @@ from .training import export_training_corpus
 
 LogFn = Callable[[str, float], None]
 
-DEFAULT_TRAINING_MODEL = "google/gemma-4-E2B-it"
+DEFAULT_TRAINING_MODEL = "Qwen/Qwen2.5-3B-Instruct"
+DEFAULT_TEACHER_MODEL = "google/gemma-4-E2B-it"
 
 
 def training_root(config: AppConfig) -> Path:
@@ -126,14 +127,16 @@ def ensure_training_environment(config: AppConfig, log: Optional[LogFn] = None, 
         if log is not None:
             log(message, progress)
 
-    selection = find_supported_training_python()
-    if not selection["path"] or not selection["launcher"]:
-        raise RuntimeError("Python 3.12 or 3.10 was not found. Install one of them to prepare the training environment.")
-
     status = inspect_training_environment(config)
     if status["ready"] and not force_reinstall:
         emit("Training environment is already ready", 1.0)
         return status
+
+    selection = find_supported_training_python()
+    if not selection["path"] or not selection["launcher"]:
+        raise RuntimeError(
+            "Python 3.12 or 3.10 was not found. Install one of them to prepare the training environment."
+        )
 
     venv_dir = training_venv_dir(config)
     env_python = training_python_path(config)
@@ -302,6 +305,78 @@ def distill_prompt_only_dataset(
     return {"output_file": str(target), "count": completed}
 
 
+def distill_teacher_coaching_dataset(
+    *,
+    input_file: str | Path,
+    output_file: str | Path,
+    base_url: str,
+    model: str,
+    api_key: str,
+    variants_per_prompt: int = 1,
+    log: Optional[LogFn] = None,
+    timeout_seconds: int = 900,
+    resume: bool = True,
+) -> Dict[str, Any]:
+    def emit(message: str, progress: float) -> None:
+        if log is not None:
+            log(message, progress)
+
+    source_rows = load_jsonl(input_file)
+    if not source_rows:
+        raise RuntimeError("No prompt-only rows were found for teacher coaching.")
+    target = Path(output_file)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    done = completed_keys(load_jsonl(target)) if resume and target.exists() else set()
+    mode = "a" if done else "w"
+    completed = 0
+    variant_count = max(0, int(variants_per_prompt))
+    total = max(len(source_rows) * max(variant_count, 1), 1)
+    with httpx.Client(timeout=timeout_seconds) as client, target.open(mode, encoding="utf-8") as handle:
+        for row_index, row in enumerate(source_rows, start=1):
+            for variant_index in range(1, variant_count + 1):
+                key = f"{row_key(row)}::coach::{variant_index}"
+                if key in done:
+                    completed += 1
+                    continue
+                teacher_text = call_teacher_coaching_model(
+                    client=client,
+                    base_url=base_url,
+                    model=model,
+                    api_key=api_key,
+                    messages=row.get("messages") or [],
+                    variant_index=variant_index,
+                )
+                coached = {
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "당신은 한국어 장편소설 작가 겸 비평 코치다. "
+                                "좋은 예시 장면과 그 평가를 JSON으로 작성한다."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": build_teacher_coaching_user_prompt(row.get("messages") or [], variant_index),
+                        },
+                        {"role": "assistant", "content": teacher_text},
+                    ],
+                    "metadata": {
+                        **(row.get("metadata") or {}),
+                        "teacher_model": model,
+                        "teacher_base_url": base_url,
+                        "source": "teacher_coached_example",
+                        "variant_index": variant_index,
+                        "row_index": row_index,
+                    },
+                }
+                handle.write(json.dumps(coached, ensure_ascii=False) + "\n")
+                handle.flush()
+                completed += 1
+                emit(f"Teacher coached {completed}/{total} examples", 0.2 + (0.8 * completed / total))
+    return {"output_file": str(target), "count": completed}
+
+
 def run_one_click_training(
     *,
     config: AppConfig,
@@ -323,24 +398,32 @@ def run_one_click_training(
     dataset_dir = training_dataset_dir(config, story_id)
 
     train_files = [str(dataset_dir / "accepted_sft.jsonl")]
+    multi_target_file = dataset_dir / "multi_target_sft.jsonl"
+    if multi_target_file.exists() and multi_target_file.stat().st_size > 0:
+        # Narrative-MTP: supervise prose plus predicted future/state targets.
+        train_files.append(str(multi_target_file))
     distilled_output = dataset_dir / "distilled_sft.jsonl"
+    teacher_coached_output = dataset_dir / "teacher_coached_sft.jsonl"
     distillation_used = False
     distillation_detail = "Distillation skipped."
-    teacher_base_url = (request.get("teacher_base_url") or runtime_settings.base_url).strip()
-    teacher_model = (request.get("teacher_model") or runtime_settings.model).strip()
-    teacher_api_key = request.get("teacher_api_key") or runtime_settings.api_key
+    teacher_coaching_used = False
+    teacher_coaching_detail = "Teacher coaching skipped."
+    teacher_base_url = (request.get("teacher_base_url") or "").strip()
+    teacher_model = (request.get("teacher_model") or DEFAULT_TEACHER_MODEL).strip()
+    teacher_api_key = request.get("teacher_api_key") or ""
     use_distillation = bool(request.get("use_distillation", True))
+    use_teacher_coaching = bool(request.get("teacher_coaching", True))
+    teacher_variants = int(request.get("teacher_variants_per_prompt") or 1)
 
     prompt_only_manifest = dataset_dir / "prompt_only_teacher.jsonl"
     if (
         use_distillation
-        and runtime_settings.provider == ProviderType.OPENAI_COMPATIBLE
         and teacher_base_url
         and teacher_model
         and prompt_only_manifest.exists()
         and prompt_only_manifest.stat().st_size > 0
     ):
-        emit("Distilling prompt-only dataset with the current teacher model", 0.25)
+        emit(f"Distilling prompt-only dataset with teacher {teacher_model}", 0.25)
         distill_result = distill_prompt_only_dataset(
             input_file=prompt_only_manifest,
             output_file=distilled_output,
@@ -361,12 +444,45 @@ def run_one_click_training(
                 {"teacher_model": teacher_model, "teacher_base_url": teacher_base_url, "count": distill_result["count"]},
             )
     else:
-        if runtime_settings.provider != ProviderType.OPENAI_COMPATIBLE:
-            distillation_detail = "Distillation skipped because the current runtime is not an OpenAI-compatible model."
-        elif not prompt_only_manifest.exists() or prompt_only_manifest.stat().st_size == 0:
+        if not prompt_only_manifest.exists() or prompt_only_manifest.stat().st_size == 0:
             distillation_detail = "Distillation skipped because there were no prompt-only rows to distill."
         else:
-            distillation_detail = "Distillation skipped because teacher settings were incomplete."
+            distillation_detail = "Distillation skipped because teacher_base_url or teacher_model was not set."
+
+    if (
+        use_teacher_coaching
+        and teacher_variants > 0
+        and teacher_base_url
+        and teacher_model
+        and prompt_only_manifest.exists()
+        and prompt_only_manifest.stat().st_size > 0
+    ):
+        emit(f"Generating teacher coached examples with {teacher_model}", 0.42)
+        coaching_result = distill_teacher_coaching_dataset(
+            input_file=prompt_only_manifest,
+            output_file=teacher_coached_output,
+            base_url=teacher_base_url,
+            model=teacher_model,
+            api_key=teacher_api_key,
+            variants_per_prompt=teacher_variants,
+            log=lambda message, progress: emit(message, 0.42 + progress * 0.1),
+            resume=True,
+        )
+        if teacher_coached_output.exists() and teacher_coached_output.stat().st_size > 0:
+            train_files.append(str(teacher_coached_output))
+            teacher_coaching_used = True
+            teacher_coaching_detail = f"Used teacher coaching from {teacher_model} via {teacher_base_url}."
+            storage.save_artifact(
+                story_id,
+                "teacher_coached_training_dataset",
+                str(teacher_coached_output),
+                {"teacher_model": teacher_model, "teacher_base_url": teacher_base_url, "count": coaching_result["count"]},
+            )
+    elif use_teacher_coaching:
+        if not prompt_only_manifest.exists() or prompt_only_manifest.stat().st_size == 0:
+            teacher_coaching_detail = "Teacher coaching skipped because there were no prompt-only rows."
+        else:
+            teacher_coaching_detail = "Teacher coaching skipped because teacher_base_url or teacher_model was not set."
 
     run_id = utcnow_iso().replace(":", "-")
     output_dir = training_runs_dir(config, story_id) / run_id
@@ -414,6 +530,10 @@ def run_one_click_training(
         "train_files": train_files,
         "distillation_used": distillation_used,
         "distillation_detail": distillation_detail,
+        "teacher_coaching_used": teacher_coaching_used,
+        "teacher_coaching_detail": teacher_coaching_detail,
+        "teacher_model": teacher_model,
+        "teacher_base_url": teacher_base_url,
         "training_profile": profile_name,
         "training_args": profile_args,
         "output_dir": str(output_dir),
@@ -559,7 +679,11 @@ def load_jsonl(path: str | Path) -> list[Dict[str, Any]]:
 def completed_keys(rows: Iterable[Dict[str, Any]]) -> set[str]:
     keys: set[str] = set()
     for row in rows:
-        keys.add(row_key(row))
+        key = row_key(row)
+        metadata = row.get("metadata") or {}
+        if metadata.get("source") == "teacher_coached_example":
+            key = f"{key}::coach::{metadata.get('variant_index', 1)}"
+        keys.add(key)
     return keys
 
 
@@ -604,6 +728,73 @@ def call_teacher_model(
         return data["choices"][0]["message"]["content"].strip()
     except Exception as exc:
         raise RuntimeError(f"Unexpected teacher response format: {json.dumps(data)[:400]}") from exc
+
+
+def call_teacher_coaching_model(
+    *,
+    client: httpx.Client,
+    base_url: str,
+    model: str,
+    api_key: str,
+    messages: list[Dict[str, str]],
+    variant_index: int,
+) -> str:
+    if not messages:
+        raise RuntimeError("Teacher coaching row is missing messages.")
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "당신은 한국어 장편소설을 지도하는 상위 교사 모델이다. "
+                    "학생 모델이 과적합하지 않도록 같은 요청에서 다른 좋은 예시를 만들고, "
+                    "왜 좋은지 짧게 평가한다. 반드시 JSON만 출력한다."
+                ),
+            },
+            {
+                "role": "user",
+                "content": build_teacher_coaching_user_prompt(messages, variant_index),
+            },
+        ],
+        "temperature": 0.85,
+        "max_tokens": 3200,
+    }
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    response = client.post(f"{base_url.rstrip('/')}/chat/completions", headers=headers, json=payload)
+    response.raise_for_status()
+    data = response.json()
+    try:
+        return data["choices"][0]["message"]["content"].strip()
+    except Exception as exc:
+        raise RuntimeError(f"Unexpected teacher coaching response format: {json.dumps(data)[:400]}") from exc
+
+
+def build_teacher_coaching_user_prompt(messages: list[Dict[str, str]], variant_index: int) -> str:
+    source_prompt = "\n\n".join(
+        f"[{message.get('role', 'user')}]\n{message.get('content', '')}".strip()
+        for message in messages
+        if message.get("content")
+    )
+    return (
+        "아래 장면 생성 요청을 보고 학습용 좋은 예시를 하나 만드세요.\n"
+        f"변형 번호: {variant_index}\n\n"
+        "출력 JSON 스키마:\n"
+        "{\n"
+        '  "draft": "좋은 예시 장면 본문",\n'
+        '  "why_it_works": ["개연성", "감정선", "복선/회수", "문체 관점의 장점"],\n'
+        '  "rubric_scores": {"coherence": 0.0, "character": 0.0, "payoff": 0.0, "language": 0.0},\n'
+        '  "avoid_overfitting_notes": ["학생 모델이 외우지 말고 일반화해야 할 원칙"]\n'
+        "}\n\n"
+        "조건:\n"
+        "- draft는 자연스러운 한국어 소설 장면이어야 합니다.\n"
+        "- 기존 accepted 장면을 그대로 반복하지 말고 다른 전개/표현을 사용하세요.\n"
+        "- 평가와 원칙은 짧고 구체적으로 작성하세요.\n"
+        "- JSON 외의 설명은 출력하지 마세요.\n\n"
+        f"원본 요청:\n{source_prompt}"
+    )
 
 
 def shutil_which(name: str) -> str:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import inspect
+import json
 from pathlib import Path
+from typing import Any
 
 
 def parse_args() -> argparse.Namespace:
@@ -152,17 +154,38 @@ def load_model_with_fallbacks(
     )
 
 
+def load_jsonl_rows(paths: list[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for raw_path in paths:
+        path = Path(raw_path)
+        with path.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Invalid JSON in {path}:{line_number}: {exc}") from exc
+                messages = row.get("messages")
+                if not isinstance(messages, list) or not messages:
+                    raise ValueError(f"Missing non-empty messages list in {path}:{line_number}")
+                rows.append({"messages": messages})
+    if not rows:
+        raise ValueError("No training rows were loaded from --train-file.")
+    return rows
+
+
 def main() -> None:
     args = parse_args()
     try:
         import torch
-        from datasets import load_dataset
+        from datasets import Dataset
         from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
         from transformers import (
             AutoModelForCausalLM,
             AutoTokenizer,
             BitsAndBytesConfig,
-            DataCollatorForLanguageModeling,
             Trainer,
             TrainingArguments,
         )
@@ -171,6 +194,9 @@ def main() -> None:
             "Training dependencies are missing. Install them with "
             "`pip install -r requirements-train.txt` before running this script."
         ) from exc
+
+    train_rows = load_jsonl_rows(args.train_file)
+    eval_rows = load_jsonl_rows([args.eval_file]) if args.eval_file else []
 
     if not torch.cuda.is_available() and not args.allow_cpu:
         raise SystemExit(
@@ -220,27 +246,60 @@ def main() -> None:
     if hasattr(model, "print_trainable_parameters"):
         model.print_trainable_parameters()
 
-    data_files = {"train": args.train_file}
-    if args.eval_file:
-        data_files["validation"] = args.eval_file
-    dataset = load_dataset("json", data_files=data_files)
+    dataset = {"train": Dataset.from_list(train_rows)}
+    if eval_rows:
+        dataset["validation"] = Dataset.from_list(eval_rows)
+
+    def _render_chat(messages, *, add_generation_prompt: bool) -> str:
+        try:
+            return tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=add_generation_prompt,
+            )
+        except Exception:
+            rendered = [f"{message.get('role', 'user')}: {message.get('content', '')}" for message in messages]
+            if add_generation_prompt:
+                rendered.append("assistant:")
+            return "\n".join(rendered)
 
     def apply_template(batch):
-        texts = [
-            tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-            for messages in batch["messages"]
-        ]
-        return {"text": texts}
+        texts = []
+        prompt_texts = []
+        for messages in batch["messages"]:
+            messages = list(messages or [])
+            texts.append(_render_chat(messages, add_generation_prompt=False))
+            if messages and messages[-1].get("role") == "assistant":
+                prompt_texts.append(_render_chat(messages[:-1], add_generation_prompt=True))
+            else:
+                prompt_texts.append(_render_chat(messages, add_generation_prompt=False))
+        return {"text": texts, "prompt_text": prompt_texts}
 
     def tokenize(batch):
-        tokens = tokenizer(
-            batch["text"],
-            truncation=True,
-            max_length=effective_max_seq_length,
-            padding=False,
-        )
-        tokens["labels"] = [input_ids[:] for input_ids in tokens["input_ids"]]
-        return tokens
+        encoded = {"input_ids": [], "attention_mask": [], "labels": []}
+        for text, prompt_text in zip(batch["text"], batch["prompt_text"]):
+            full = tokenizer(
+                text,
+                truncation=True,
+                max_length=effective_max_seq_length,
+                padding=False,
+            )
+            prefix = tokenizer(
+                prompt_text,
+                truncation=True,
+                max_length=effective_max_seq_length,
+                padding=False,
+            )
+            input_ids = full["input_ids"]
+            labels = input_ids[:]
+            prefix_len = min(len(prefix["input_ids"]), len(labels))
+            labels[:prefix_len] = [-100] * prefix_len
+            if labels and all(value == -100 for value in labels):
+                labels[-1] = input_ids[-1]
+            encoded["input_ids"].append(input_ids)
+            encoded["attention_mask"].append(full["attention_mask"])
+            encoded["labels"].append(labels)
+        return encoded
 
     num_proc = args.dataset_num_proc if args.dataset_num_proc > 1 else None
     train_dataset = dataset["train"].map(apply_template, batched=True, num_proc=num_proc)
@@ -283,13 +342,25 @@ def main() -> None:
         training_kwargs["gradient_checkpointing_kwargs"] = {"use_reentrant": False}
 
     training_args = TrainingArguments(**training_kwargs)
+    tokenizer.padding_side = "right"
+
+    def collate_causal_lm(features):
+        labels = [feature.pop("labels") for feature in features]
+        batch = tokenizer.pad(features, padding=True, return_tensors="pt")
+        max_len = batch["input_ids"].shape[1]
+        padded_labels = []
+        for label in labels:
+            pad_len = max_len - len(label)
+            padded_labels.append(label + [-100] * pad_len)
+        batch["labels"] = torch.tensor(padded_labels, dtype=torch.long)
+        return batch
 
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        data_collator=collate_causal_lm,
     )
     trainer.train()
 

@@ -106,6 +106,48 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.model_catalog = catalog
         return catalog
 
+    def generation_settings(story_id: str = "") -> tuple[RuntimeSettings, str]:
+        adapters = list_trained_adapters(config, story_id=story_id) if story_id else []
+        if not adapters:
+            adapters = list_trained_adapters(config)
+        if adapters:
+            adapter = adapters[0]
+            try:
+                trained_settings, _log_path = start_trained_adapter_server(
+                    config=config,
+                    adapter=adapter,
+                    current_settings=current_settings(),
+                    registry=app.state.trained_servers,
+                )
+                saved = save_settings(trained_settings)
+                app.state.model_catalog = build_catalog_from_settings(saved)
+                fast_settings = saved.model_copy(update={"candidate_count": 1}) if saved.candidate_count > 1 else saved
+                return fast_settings, f"학습 모델로 생성합니다: {saved.model}"
+            except Exception as exc:
+                fallback, detail = quickstart_settings(current_settings())
+                return fallback, f"학습 모델 자동 연결 실패: {exc}. {detail}"
+        return quickstart_settings(current_settings())
+
+    def resolve_teacher_request(payload: OneClickTrainingRequest) -> Dict[str, Any]:
+        request = payload.model_dump()
+        requested_model = (request.get("teacher_model") or "google/gemma-4-E2B-it").strip()
+        requested_base_url = (request.get("teacher_base_url") or "").strip()
+        if requested_base_url:
+            return request
+
+        catalog = current_catalog(refresh=True)
+        teacher_option = _pick_teacher_option(catalog.options, requested_model)
+        if teacher_option is not None:
+            request["teacher_base_url"] = teacher_option.base_url
+            request["teacher_model"] = teacher_option.model
+            return request
+
+        settings = current_settings()
+        if settings.provider == ProviderType.OPENAI_COMPATIBLE and _looks_like_teacher_model(settings.model):
+            request["teacher_base_url"] = settings.base_url
+            request["teacher_model"] = settings.model
+        return request
+
     @contextmanager
     def orchestrator_context(settings: RuntimeSettings | None = None) -> Iterator[Orchestrator]:
         provider = build_provider(settings or current_settings())
@@ -143,7 +185,7 @@ def create_app(config: AppConfig) -> FastAPI:
             state=storage.get_latest_state(story_id),
             outline=storage.list_outline(story_id),
             recent_scenes=storage.list_scenes(story_id)[-config.orchestration.recent_scene_memory :],
-            provider=quickstart_settings(current_settings())[0].provider,
+            provider=current_settings().provider,
             detail=detail,
         ).model_dump()
 
@@ -264,7 +306,7 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.post("/api/quickstart")
     def quickstart_story(payload: QuickstartRequest) -> Dict[str, Any]:
         story = storage.create_story(build_story_from_prompt(payload))
-        settings, detail = quickstart_settings(current_settings())
+        settings, detail = generation_settings()
         with orchestrator_context(settings) as orchestrator:
             outline = orchestrator.generate_outline(story.id, OutlineGenerateRequest(scene_count=payload.scene_count))
             first_card = next_planned_outline_card(outline)
@@ -275,7 +317,7 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.post("/api/quickstart/job")
     def quickstart_story_job(payload: QuickstartRequest) -> Dict[str, Any]:
         story = storage.create_story(build_story_from_prompt(payload))
-        settings, detail = quickstart_settings(current_settings())
+        settings, detail = generation_settings()
         job_id = str(uuid4())
 
         def task(log):
@@ -348,14 +390,30 @@ def create_app(config: AppConfig) -> FastAPI:
         job_id = str(uuid4())
 
         def task(log):
-            return run_one_click_training(
+            request = resolve_teacher_request(payload)
+            result = run_one_click_training(
                 config=config,
                 storage=storage,
                 story_id=story_id,
                 runtime_settings=current_settings(),
-                request=payload.model_dump(),
+                request=request,
                 log=log,
             )
+            log("학습 완료. 최신 학습 모델을 생성 모델로 자동 연결합니다.", 0.985)
+            adapter = select_trained_adapter(config, story_id=story_id)
+            trained_settings, log_path = start_trained_adapter_server(
+                config=config,
+                adapter=adapter,
+                current_settings=current_settings(),
+                registry=app.state.trained_servers,
+            )
+            saved = save_settings(trained_settings)
+            app.state.model_catalog = build_catalog_from_settings(saved)
+            result["auto_connected_adapter"] = adapter.model_dump()
+            result["auto_connected_settings"] = saved.model_dump()
+            result["adapter_server_log_path"] = log_path
+            log(f"학습 모델 자동 연결 완료: {saved.model}", 1.0)
+            return result
 
         training_jobs.enqueue(job_id=job_id, story_id=story_id, kind="story_training", fn=task)
         job = storage.get_job(job_id)
@@ -385,7 +443,8 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.post("/api/stories/{story_id}/outline/generate")
     def generate_outline(story_id: str, payload: OutlineGenerateRequest) -> Dict[str, Any]:
         ensure_story(story_id)
-        with orchestrator_context() as orchestrator:
+        settings, _detail = generation_settings(story_id)
+        with orchestrator_context(settings) as orchestrator:
             cards = orchestrator.generate_outline(story_id, payload)
         return {"items": [card.model_dump() for card in cards]}
 
@@ -397,10 +456,11 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.post("/api/stories/{story_id}/scenes/generate")
     def generate_scene(story_id: str, payload: SceneRequest) -> Dict[str, Any]:
         ensure_story(story_id)
+        settings, _detail = generation_settings(story_id)
         job_id = str(uuid4())
 
         def task(log):
-            with orchestrator_context() as orchestrator:
+            with orchestrator_context(settings) as orchestrator:
                 result = orchestrator.run_scene(story_id, payload, log=log)
                 return result.model_dump()
 
@@ -416,7 +476,7 @@ def create_app(config: AppConfig) -> FastAPI:
         next_card = next_planned_outline_card(outline)
         if next_card is None:
             raise HTTPException(status_code=400, detail="No unused outline cards remain for this story.")
-        settings, detail = quickstart_settings(current_settings())
+        settings, detail = generation_settings(story_id)
         with orchestrator_context(settings) as orchestrator:
             orchestrator.run_scene(story_id, outline_to_scene_request(next_card, continue_request_to_words(payload or ContinueStoryRequest())))
         return quickstart_bundle(story_id, detail)
@@ -428,7 +488,7 @@ def create_app(config: AppConfig) -> FastAPI:
         next_card = next_planned_outline_card(outline)
         if next_card is None:
             raise HTTPException(status_code=400, detail="No unused outline cards remain for this story.")
-        settings, detail = quickstart_settings(current_settings())
+        settings, detail = generation_settings(story_id)
         job_id = str(uuid4())
 
         def task(log):
@@ -529,3 +589,27 @@ def create_app(config: AppConfig) -> FastAPI:
         return FileResponse(str(path), filename=path.name)
 
     return app
+
+
+def _pick_teacher_option(options: list[Any], requested_model: str):
+    requested = (requested_model or "").lower()
+    exact_matches = [option for option in options if option.model.lower() == requested and _looks_like_teacher_model(option.model)]
+    if exact_matches:
+        return exact_matches[0]
+
+    teachers = [option for option in options if _looks_like_teacher_model(option.model)]
+    if not teachers:
+        return None
+
+    def score(option) -> tuple[int, int]:
+        lowered = option.model.lower()
+        preferred = 2 if "e4b" in lowered else 1 if "e2b" in lowered else 0
+        requested_match = 1 if requested and requested in lowered else 0
+        return (requested_match, preferred)
+
+    return sorted(teachers, key=score, reverse=True)[0]
+
+
+def _looks_like_teacher_model(model: str) -> bool:
+    lowered = (model or "").lower()
+    return "gemma" in lowered and ("e2b" in lowered or "e4b" in lowered or "4-e" in lowered)

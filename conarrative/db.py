@@ -43,9 +43,15 @@ class Storage:
 
     def init_db(self) -> None:
         with self.connect() as conn:
+            try:
+                conn.execute("PRAGMA journal_mode=WAL")
+            except sqlite3.OperationalError:
+                # Some locked-down Windows folders block creating SQLite -wal/-shm
+                # sidecar files. The app should still initialize with the default
+                # journal mode instead of failing before schema checks run.
+                pass
             conn.executescript(
                 """
-                PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS stories (
                     id TEXT PRIMARY KEY,
                     title TEXT NOT NULL,
