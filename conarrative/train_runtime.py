@@ -56,6 +56,8 @@ def inspect_training_environment(config: AppConfig) -> Dict[str, Any]:
         "torch_version": "",
         "cuda_available": False,
         "cuda_device_count": 0,
+        "cuda_total_gib": 0.0,
+        "cuda_free_gib": 0.0,
         "bitsandbytes_ok": False,
         "transformers_ok": False,
         "peft_ok": False,
@@ -84,10 +86,17 @@ def inspect_training_environment(config: AppConfig) -> Dict[str, Any]:
         detail_parts.append("No NVIDIA GPU was detected via nvidia-smi.")
     if venv_exists:
         detail_parts.append(f"Training env: {env_python}")
+        if env_info["cuda_total_gib"]:
+            detail_parts.append(
+                f"CUDA memory: {env_info['cuda_free_gib']:.1f} GiB free / {env_info['cuda_total_gib']:.1f} GiB total."
+            )
         if env_info["detail"]:
             detail_parts.append(env_info["detail"])
     else:
         detail_parts.append("Training env has not been created yet.")
+    profile_name = training_profile_name(env_info)
+    if not venv_exists and gpu["available"]:
+        profile_name = "pending-cuda"
     return {
         "preferred_python_version": selected_python["version"],
         "preferred_python_path": selected_python["path"],
@@ -101,10 +110,13 @@ def inspect_training_environment(config: AppConfig) -> Dict[str, Any]:
         "torch_version": env_info["torch_version"],
         "cuda_available": env_info["cuda_available"],
         "cuda_device_count": env_info["cuda_device_count"],
+        "cuda_total_gib": env_info["cuda_total_gib"],
+        "cuda_free_gib": env_info["cuda_free_gib"],
         "bitsandbytes_ok": env_info["bitsandbytes_ok"],
         "transformers_ok": env_info["transformers_ok"],
         "peft_ok": env_info["peft_ok"],
         "ready": ready,
+        "training_profile": profile_name,
         "detail": " ".join(detail_parts),
     }
 
@@ -208,6 +220,33 @@ def export_story_training_dataset(config: AppConfig, storage: Storage, story_id:
         {"counts": manifest["counts"], "dataset_dir": str(out_dir)},
     )
     return manifest
+
+
+def training_profile_name(env_status: Dict[str, Any]) -> str:
+    if not env_status.get("cuda_available"):
+        return "cpu-debug"
+    total_gib = float(env_status.get("cuda_total_gib") or 0.0)
+    if total_gib and total_gib <= 8.5:
+        return "low-vram-8gb"
+    return "balanced-cuda"
+
+
+def training_profile_args(env_status: Dict[str, Any], request: Dict[str, Any]) -> list[str]:
+    profile = training_profile_name(env_status)
+    max_seq_length = int(request.get("max_seq_length") or (2048 if profile == "low-vram-8gb" else 4096))
+    lora_r = int(request.get("lora_r") or (8 if profile == "low-vram-8gb" else 16))
+    lora_alpha = int(request.get("lora_alpha") or (16 if profile == "low-vram-8gb" else 32))
+    script_profile = "low-vram" if profile == "low-vram-8gb" else "auto"
+    return [
+        "--profile",
+        script_profile,
+        "--max-seq-length",
+        str(max_seq_length),
+        "--lora-r",
+        str(lora_r),
+        "--lora-alpha",
+        str(lora_alpha),
+    ]
 
 
 def distill_prompt_only_dataset(
@@ -333,14 +372,23 @@ def run_one_click_training(
     output_dir = training_runs_dir(config, story_id) / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
     metadata_path = output_dir / "run_metadata.json"
+    base_model = request.get("base_model") or DEFAULT_TRAINING_MODEL
     hf_token = request.get("hf_token") or os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN", "")
+    profile_name = training_profile_name(env_status)
+    profile_args = training_profile_args(env_status, request)
+    if profile_name == "low-vram-8gb":
+        emit("Using low-VRAM training profile: max_seq_length=2048, LoRA r=8, alpha=16", 0.5)
+    if env_status.get("cuda_free_gib") and float(env_status["cuda_free_gib"]) < 4.0:
+        emit("GPU free memory is low. Close LM Studio/Ollama/other GPU apps before training if loading fails.", 0.51)
+    if base_model.startswith("google/gemma") and not hf_token:
+        emit("No Hugging Face token was provided. Gemma downloads can fail or be rate-limited without one.", 0.52)
     command = [
         str(training_python_path(config)),
         "scripts/train_qlora.py",
         "--train-file",
         *train_files,
         "--model-name",
-        request.get("base_model") or DEFAULT_TRAINING_MODEL,
+        base_model,
         "--output-dir",
         str(output_dir),
         "--epochs",
@@ -349,6 +397,7 @@ def run_one_click_training(
         str(request.get("per_device_batch_size", 1)),
         "--gradient-accumulation-steps",
         str(request.get("gradient_accumulation_steps", 16)),
+        *profile_args,
     ]
     if not env_status.get("bitsandbytes_ok") or not env_status.get("cuda_available"):
         command.append("--no-4bit")
@@ -361,10 +410,12 @@ def run_one_click_training(
     run_command_live(command, cwd=Path.cwd(), env=env, emit=emit, progress=(0.55, 0.98))
 
     metadata = {
-        "base_model": request.get("base_model") or DEFAULT_TRAINING_MODEL,
+        "base_model": base_model,
         "train_files": train_files,
         "distillation_used": distillation_used,
         "distillation_detail": distillation_detail,
+        "training_profile": profile_name,
+        "training_args": profile_args,
         "output_dir": str(output_dir),
         "final_adapter_dir": str(output_dir / "final_adapter"),
         "env_status": env_status,
@@ -430,6 +481,8 @@ payload = {
     "torch_version": "",
     "cuda_available": False,
     "cuda_device_count": 0,
+    "cuda_total_gib": 0.0,
+    "cuda_free_gib": 0.0,
     "bitsandbytes_ok": importlib.util.find_spec("bitsandbytes") is not None,
     "transformers_ok": importlib.util.find_spec("transformers") is not None,
     "peft_ok": importlib.util.find_spec("peft") is not None,
@@ -441,6 +494,10 @@ try:
     payload["torch_version"] = torch.__version__
     payload["cuda_available"] = torch.cuda.is_available()
     payload["cuda_device_count"] = torch.cuda.device_count()
+    if payload["cuda_available"]:
+        free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+        payload["cuda_total_gib"] = round(total_bytes / (1024 ** 3), 2)
+        payload["cuda_free_gib"] = round(free_bytes / (1024 ** 3), 2)
 except Exception as exc:
     payload["detail"] = str(exc)
 print(json.dumps(payload))

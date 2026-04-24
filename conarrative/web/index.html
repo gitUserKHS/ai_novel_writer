@@ -13,8 +13,8 @@
           <p class="eyebrow">One prompt in. Story out.</p>
           <h1>CoNarrative Studio</h1>
           <p class="hero-copy">
-            프롬프트 한 줄만 넣으면 스토리, 아웃라인, 첫 장면까지 바로 시작합니다. 로컬 모델이 있으면 자동 연결 버튼으로
-            붙일 수 있고, 없으면 내장 스토리 엔진으로 바로 사용할 수 있습니다.
+            프롬프트 하나만 넣으면 스토리, 아웃라인, 첫 장면까지 한 번에 시작합니다. 모델 연결과 학습은 버튼으로 처리하고,
+            막히면 내장 엔진으로 바로 이어갑니다.
           </p>
         </div>
         <div class="hero-tools">
@@ -23,13 +23,32 @@
         </div>
       </header>
 
+      <section class="command-strip" aria-label="작업 흐름">
+        <div>
+          <span>01</span>
+          <strong>프롬프트 입력</strong>
+        </div>
+        <div>
+          <span>02</span>
+          <strong>모델 자동 선택</strong>
+        </div>
+        <div>
+          <span>03</span>
+          <strong>장면 생성</strong>
+        </div>
+        <div>
+          <span>04</span>
+          <strong>필요하면 딸깍 학습</strong>
+        </div>
+      </section>
+
       <section class="panel composer">
         <div class="panel-head">
           <div>
             <p class="section-kicker">Quick Start</p>
             <h2>아이디어 하나로 시작</h2>
           </div>
-          <span class="helper-chip">기본값은 모델 연결 없이 동작</span>
+          <span class="helper-chip">초보자 모드: 기본값 그대로 진행</span>
         </div>
         <textarea
           id="quickstart-prompt"
@@ -49,12 +68,12 @@
             사용할 모델
             <select id="model-picker"></select>
           </label>
-          <button id="quickstart-btn" class="primary-btn" type="button">이 프롬프트로 시작</button>
+          <button id="quickstart-btn" class="primary-btn" type="button">바로 만들기</button>
           <button id="auto-connect-btn" class="secondary-btn" type="button">로컬 모델 자동 연결</button>
           <button id="refresh-models-btn" class="ghost-btn" type="button">모델 목록 새로고침</button>
         </div>
         <div id="quickstart-note" class="note-box">
-          빠른 시작은 자동으로 스토리를 만들고, 아웃라인을 생성하고, 첫 장면까지 바로 작성합니다.
+          빠른 시작은 스토리 생성, 아웃라인 작성, 첫 장면 생성을 한 번에 처리합니다. 로컬 모델은 빠른 후보 1개 모드로 먼저 실행합니다.
         </div>
       </section>
 

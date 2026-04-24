@@ -52,7 +52,11 @@ THEME_HINTS = [
 
 def quickstart_settings(settings: RuntimeSettings) -> tuple[RuntimeSettings, str]:
     if settings.provider == ProviderType.OPENAI_COMPATIBLE:
-        return settings, f"Trying your local model first: {settings.model}. If it does not answer, the built-in storyteller fills in."
+        fast_settings = settings.model_copy(update={"candidate_count": 1}) if settings.candidate_count > 1 else settings
+        return (
+            fast_settings,
+            f"Trying your local model first: {settings.model}. Quickstart uses 1 draft candidate for speed; if it does not answer, the built-in storyteller fills in.",
+        )
     return settings, "Using the built-in storyteller. No model setup is required."
 
 

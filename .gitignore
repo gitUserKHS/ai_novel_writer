@@ -3,6 +3,9 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.tmp/
+pytest_tmp/
+manual_tmp_test/
 .mypy_cache/
 .ruff_cache/
 workspace/

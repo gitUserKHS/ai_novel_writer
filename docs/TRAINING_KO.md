@@ -85,7 +85,8 @@ python scripts/train_qlora.py `
   --output-dir workspace/training_runs/gemma4e2b-novel-qlora `
   --epochs 1 `
   --per-device-batch-size 1 `
-  --gradient-accumulation-steps 16
+  --gradient-accumulation-steps 16 `
+  --profile auto
 ```
 
 증류 없이 바로 내부 승인 샘플만으로 시작하고 싶으면:
@@ -123,6 +124,8 @@ python scripts/train_qlora.py `
 - 증류 교사에게는 반드시 "한국어로만", "장면 본문만", "개연성 유지", "기억 문맥 엄수"를 강하게 걸어야 합니다.
 - 처음부터 장편 전체를 한 번에 학습시키지 말고, 장면 단위 데이터로 시작하는 편이 안정적입니다.
 - 작은 모델에 너무 긴 시퀀스를 넣으면 느려지고 일관성이 흔들릴 수 있으니, 첫 실험은 `4096` 전후가 무난합니다.
+- 8GB급 GPU에서는 앱이 자동으로 `max_seq_length=2048`, `LoRA r=8`, `alpha=16` 프로파일을 사용합니다. 품질 실험은 안정화 후 `quality` 프로파일이나 더 긴 시퀀스로 올리세요.
+- 학습 시작 전에 LM Studio, Ollama, 브라우저 GPU 작업처럼 VRAM을 잡아먹는 프로그램을 닫으면 모델 로딩 실패가 줄어듭니다.
 - 한 번에 너무 많은 스타일을 섞지 말고, 한국어 문체 목표를 먼저 좁히는 편이 좋습니다.
 
 ## 주의

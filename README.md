@@ -122,5 +122,7 @@ pytest -q
 - 현재 스토리 데이터셋 export
 - 현재 연결된 OpenAI-compatible 모델이 있으면 prompt-only 데이터 증류
 - `google/gemma-4-E2B-it` 기준 LoRA/QLoRA 학습 시작
+- 8GB급 GPU에서는 자동으로 `max_seq_length=2048`, `LoRA r=8` 저VRAM 프로파일 적용
+- GPU 여유 메모리와 적용된 학습 프로파일을 UI 로그에 표시
 
 자세한 설명은 [docs/TRAINING_KO.md](docs/TRAINING_KO.md)를 참고하세요.

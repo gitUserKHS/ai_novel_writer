@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 from pathlib import Path
 
 
@@ -21,23 +22,60 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
+    parser.add_argument("--profile", choices=["auto", "low-vram", "quality"], default="auto")
+    parser.add_argument("--attn-implementation", choices=["sdpa", "eager", "disabled"], default="sdpa")
+    parser.add_argument("--dataset-num-proc", type=int, default=1)
     parser.add_argument("--no-4bit", action="store_true", help="Disable 4-bit quantization")
     parser.add_argument("--allow-cpu", action="store_true", help="Allow CPU training for debugging only")
     parser.add_argument("--trust-remote-code", action="store_true")
     return parser.parse_args()
 
 
-def recommend_max_seq_length(args, torch) -> int:
+def cuda_total_gib(torch) -> float:
     if not torch.cuda.is_available():
-        return args.max_seq_length
-    total_gib = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-    if total_gib <= 8.5 and args.max_seq_length > 2048:
+        return 0.0
+    return torch.cuda.get_device_properties(0).total_memory / (1024**3)
+
+
+def configure_torch_speed(torch) -> None:
+    if not torch.cuda.is_available():
+        return
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    if hasattr(torch, "set_float32_matmul_precision"):
+        torch.set_float32_matmul_precision("high")
+
+
+def is_low_vram_profile(args, torch) -> bool:
+    if args.profile == "low-vram":
+        return True
+    if args.profile == "quality":
+        return False
+    total_gib = cuda_total_gib(torch)
+    return bool(total_gib and total_gib <= 8.5)
+
+
+def recommend_max_seq_length(args, torch) -> int:
+    if is_low_vram_profile(args, torch) and args.max_seq_length > 2048:
+        total_gib = cuda_total_gib(torch)
         print(
             f"Detected {total_gib:.1f} GiB VRAM. "
             f"Reducing max_seq_length from {args.max_seq_length} to 2048 for a safer 8 GB training profile."
         )
         return 2048
     return args.max_seq_length
+
+
+def recommend_lora_config(args, torch) -> tuple[int, int]:
+    if is_low_vram_profile(args, torch) and args.lora_r > 8:
+        total_gib = cuda_total_gib(torch)
+        alpha = min(args.lora_alpha, 16)
+        print(
+            f"Detected {total_gib:.1f} GiB VRAM. "
+            f"Reducing LoRA rank from r={args.lora_r}, alpha={args.lora_alpha} to r=8, alpha={alpha}."
+        )
+        return 8, alpha
+    return args.lora_r, args.lora_alpha
 
 
 def load_model_with_fallbacks(
@@ -54,6 +92,8 @@ def load_model_with_fallbacks(
         "quantization_config": quantization_config,
         "low_cpu_mem_usage": True,
     }
+    if torch.cuda.is_available() and args.attn_implementation != "disabled":
+        load_kwargs["attn_implementation"] = args.attn_implementation
     strategies = []
     if torch.cuda.is_available():
         free_bytes, total_bytes = torch.cuda.mem_get_info(0)
@@ -69,15 +109,25 @@ def load_model_with_fallbacks(
         strategies.append({"device_map": None})
 
     errors = []
+    def load_with_strategy(strategy):
+        return AutoModelForCausalLM.from_pretrained(
+            args.model_name,
+            **load_kwargs,
+            device_map=strategy["device_map"],
+        )
+
     for index, strategy in enumerate(strategies, start=1):
         try:
             print(f"Loading model with strategy {index}/{len(strategies)}: device_map={strategy['device_map']}")
-            model = AutoModelForCausalLM.from_pretrained(
-                args.model_name,
-                **load_kwargs,
-                device_map=strategy["device_map"],
-            )
-            return model
+            return load_with_strategy(strategy)
+        except TypeError as exc:
+            text = str(exc)
+            errors.append(text)
+            if "attn_implementation" in text and "attn_implementation" in load_kwargs:
+                print("This model loader does not accept attn_implementation. Retrying without it.")
+                load_kwargs.pop("attn_implementation", None)
+                return load_with_strategy(strategy)
+            raise
         except ValueError as exc:
             text = str(exc)
             errors.append(text)
@@ -131,7 +181,9 @@ def main() -> None:
     use_4bit = not args.no_4bit
     use_bf16 = bool(torch.cuda.is_available() and torch.cuda.is_bf16_supported())
     torch_dtype = torch.bfloat16 if use_bf16 else torch.float16
+    configure_torch_speed(torch)
     effective_max_seq_length = recommend_max_seq_length(args, torch)
+    effective_lora_r, effective_lora_alpha = recommend_lora_config(args, torch)
     quantization_config = None
     if use_4bit:
         quantization_config = BitsAndBytesConfig(
@@ -158,13 +210,15 @@ def main() -> None:
 
     peft_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
+        r=effective_lora_r,
+        lora_alpha=effective_lora_alpha,
         lora_dropout=args.lora_dropout,
         bias="none",
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
     model = get_peft_model(model, peft_config)
+    if hasattr(model, "print_trainable_parameters"):
+        model.print_trainable_parameters()
 
     data_files = {"train": args.train_file}
     if args.eval_file:
@@ -188,35 +242,47 @@ def main() -> None:
         tokens["labels"] = [input_ids[:] for input_ids in tokens["input_ids"]]
         return tokens
 
-    train_dataset = dataset["train"].map(apply_template, batched=True)
-    train_dataset = train_dataset.map(tokenize, batched=True, remove_columns=train_dataset.column_names)
+    num_proc = args.dataset_num_proc if args.dataset_num_proc > 1 else None
+    train_dataset = dataset["train"].map(apply_template, batched=True, num_proc=num_proc)
+    train_dataset = train_dataset.map(tokenize, batched=True, num_proc=num_proc, remove_columns=train_dataset.column_names)
 
     eval_dataset = None
     if "validation" in dataset:
-        eval_dataset = dataset["validation"].map(apply_template, batched=True)
-        eval_dataset = eval_dataset.map(tokenize, batched=True, remove_columns=eval_dataset.column_names)
+        eval_dataset = dataset["validation"].map(apply_template, batched=True, num_proc=num_proc)
+        eval_dataset = eval_dataset.map(tokenize, batched=True, num_proc=num_proc, remove_columns=eval_dataset.column_names)
 
-    training_args = TrainingArguments(
-        output_dir=args.output_dir,
-        num_train_epochs=args.epochs,
-        learning_rate=args.learning_rate,
-        per_device_train_batch_size=args.per_device_batch_size,
-        per_device_eval_batch_size=args.per_device_batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        logging_steps=args.logging_steps,
-        save_steps=args.save_steps,
-        warmup_ratio=args.warmup_ratio,
-        bf16=use_bf16,
-        fp16=torch.cuda.is_available() and not use_bf16,
-        optim="paged_adamw_8bit" if use_4bit else "adamw_torch",
-        lr_scheduler_type="cosine",
-        report_to="none",
-        remove_unused_columns=False,
-        evaluation_strategy="steps" if eval_dataset is not None else "no",
-        eval_steps=args.save_steps if eval_dataset is not None else None,
-        save_total_limit=2,
-        gradient_checkpointing=True,
-    )
+    training_kwargs = {
+        "output_dir": args.output_dir,
+        "num_train_epochs": args.epochs,
+        "learning_rate": args.learning_rate,
+        "per_device_train_batch_size": args.per_device_batch_size,
+        "per_device_eval_batch_size": args.per_device_batch_size,
+        "gradient_accumulation_steps": args.gradient_accumulation_steps,
+        "logging_steps": args.logging_steps,
+        "save_steps": args.save_steps,
+        "warmup_ratio": args.warmup_ratio,
+        "bf16": use_bf16,
+        "fp16": torch.cuda.is_available() and not use_bf16,
+        "optim": "paged_adamw_8bit" if use_4bit else "adamw_torch",
+        "lr_scheduler_type": "cosine",
+        "report_to": "none",
+        "remove_unused_columns": False,
+        "eval_steps": args.save_steps if eval_dataset is not None else None,
+        "save_total_limit": 2,
+        "gradient_checkpointing": True,
+    }
+    training_signature = inspect.signature(TrainingArguments.__init__)
+    eval_strategy = "steps" if eval_dataset is not None else "no"
+    if "eval_strategy" in training_signature.parameters:
+        training_kwargs["eval_strategy"] = eval_strategy
+    else:
+        training_kwargs["evaluation_strategy"] = eval_strategy
+    if "save_safetensors" in training_signature.parameters:
+        training_kwargs["save_safetensors"] = True
+    if "gradient_checkpointing_kwargs" in training_signature.parameters:
+        training_kwargs["gradient_checkpointing_kwargs"] = {"use_reentrant": False}
+
+    training_args = TrainingArguments(**training_kwargs)
 
     trainer = Trainer(
         model=model,

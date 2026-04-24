@@ -85,6 +85,41 @@ function escapeHtml(text) {
     .replaceAll("'", "&#039;");
 }
 
+function compactError(error) {
+  const raw = error?.message || String(error || "알 수 없는 오류");
+  return raw.length > 420 ? `${raw.slice(0, 420)}...` : raw;
+}
+
+function formatGib(value) {
+  if (typeof value !== "number" || Number.isNaN(value) || value <= 0) {
+    return "";
+  }
+  return `${value.toFixed(1)} GiB`;
+}
+
+function formatTrainingSummary(env) {
+  const parts = [];
+  if (env.ready) {
+    parts.push("학습 환경 준비 완료.");
+  } else {
+    parts.push("학습 환경 준비가 필요합니다.");
+  }
+  const total = formatGib(env.cuda_total_gib);
+  const free = formatGib(env.cuda_free_gib);
+  if (total) {
+    parts.push(`GPU ${env.gpu_name || "CUDA"}: ${free ? `${free} 여유 / ` : ""}${total} 전체.`);
+  } else if (env.gpu_available) {
+    parts.push(`GPU ${env.gpu_name || "NVIDIA"} 감지됨.`);
+  }
+  if (env.training_profile) {
+    parts.push(`자동 프로파일: ${env.training_profile}.`);
+  }
+  if (env.detail) {
+    parts.push(env.detail);
+  }
+  return parts.join(" ");
+}
+
 function updateStoryButtons(enabled) {
   els.continueBtn.disabled = !enabled;
   els.exportBtn.disabled = !enabled;
@@ -324,16 +359,18 @@ function renderTrainingPanel() {
     return;
   }
   els.trainingReadyChip.textContent = env.ready ? "학습 환경 준비 완료" : "학습 환경 준비 필요";
-  els.trainingSummary.textContent = env.detail || "학습 환경 세부 정보가 없습니다.";
+  els.trainingSummary.textContent = formatTrainingSummary(env);
   els.trainingTeacherNote.textContent = `현재 교사 모델: ${currentTeacher}`;
   if (uiState.trainingJob && uiState.trainingJob.story_id === uiState.selectedStoryId) {
     const logs = (uiState.trainingJob.logs || []).map((item) => `[${item.time}] ${item.message}`);
     const header = [
       `job: ${uiState.trainingJob.kind}`,
       `status: ${uiState.trainingJob.status}`,
+      `progress: ${Math.round((uiState.trainingJob.progress || 0) * 100)}%`,
       `message: ${uiState.trainingJob.message}`,
+      uiState.trainingJob.error_text ? `error: ${uiState.trainingJob.error_text}` : "",
       "",
-    ];
+    ].filter(Boolean);
     els.trainingLog.textContent = header.concat(logs).join("\n");
   } else {
     els.trainingLog.textContent = env.ready
@@ -645,6 +682,9 @@ function setBusy(button, busyText, callback) {
     button.textContent = busyText;
     try {
       await callback(...args);
+    } catch (error) {
+      console.error(error);
+      els.quickstartNote.textContent = `오류: ${compactError(error)}`;
     } finally {
       button.disabled = false;
       button.textContent = previousText;

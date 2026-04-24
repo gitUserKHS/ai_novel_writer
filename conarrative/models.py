@@ -371,10 +371,13 @@ class TrainingEnvironmentOut(BaseModel):
     torch_version: str = ""
     cuda_available: bool = False
     cuda_device_count: int = 0
+    cuda_total_gib: float = 0.0
+    cuda_free_gib: float = 0.0
     bitsandbytes_ok: bool = False
     transformers_ok: bool = False
     peft_ok: bool = False
     ready: bool = False
+    training_profile: str = ""
     detail: str = ""
 
 
@@ -388,6 +391,9 @@ class OneClickTrainingRequest(BaseModel):
     epochs: float = Field(default=1.0, ge=0.05, le=20.0)
     per_device_batch_size: int = Field(default=1, ge=1, le=8)
     gradient_accumulation_steps: int = Field(default=16, ge=1, le=256)
+    max_seq_length: int = Field(default=0, ge=0, le=32768)
+    lora_r: int = Field(default=0, ge=0, le=256)
+    lora_alpha: int = Field(default=0, ge=0, le=512)
     use_distillation: bool = True
     teacher_base_url: str = ""
     teacher_model: str = ""
