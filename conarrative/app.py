@@ -43,7 +43,7 @@ from .autodetect import auto_connect_settings, build_catalog_from_settings, dete
 from .orchestrator import Orchestrator
 from .quickstart import build_story_from_prompt, continue_request_to_words, next_planned_outline_card, outline_to_scene_request, quickstart_settings
 from .runtime_settings import RuntimeSettingsStore
-from .train_runtime import ensure_training_environment, inspect_training_environment, run_one_click_training
+from .train_runtime import cleanup_training_artifacts, ensure_training_environment, get_training_status, inspect_training_environment, run_one_click_training
 from .trained_runtime import list_trained_adapters, select_trained_adapter, start_trained_adapter_server, stop_trained_servers
 
 
@@ -251,6 +251,17 @@ def create_app(config: AppConfig) -> FastAPI:
     def get_trained_adapters(story_id: str = "") -> Dict[str, Any]:
         return {"items": [adapter.model_dump() for adapter in list_trained_adapters(config, story_id=story_id)]}
 
+    @app.get("/api/stories/{story_id}/training/status")
+    def get_story_training_status(story_id: str) -> Dict[str, Any]:
+        ensure_story(story_id)
+        return get_training_status(config, story_id)
+
+    @app.post("/api/stories/{story_id}/training/cleanup")
+    def cleanup_story_training(story_id: str) -> Dict[str, Any]:
+        ensure_story(story_id)
+        report = cleanup_training_artifacts(config=config, story_id=story_id)
+        return {"ok": True, "cleanup_report": report, "status": get_training_status(config, story_id)}
+
     @app.post("/api/training/adapters/use")
     def use_trained_adapter(payload: UseTrainedAdapterRequest) -> Dict[str, Any]:
         adapter = select_trained_adapter(config, story_id=payload.story_id, adapter_dir=payload.adapter_dir)
@@ -391,6 +402,7 @@ def create_app(config: AppConfig) -> FastAPI:
 
         def task(log):
             request = resolve_teacher_request(payload)
+            stop_trained_servers(app.state.trained_servers)
             result = run_one_click_training(
                 config=config,
                 storage=storage,
@@ -406,6 +418,7 @@ def create_app(config: AppConfig) -> FastAPI:
                 adapter=adapter,
                 current_settings=current_settings(),
                 registry=app.state.trained_servers,
+                force_restart=True,
             )
             saved = save_settings(trained_settings)
             app.state.model_catalog = build_catalog_from_settings(saved)

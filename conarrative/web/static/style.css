@@ -360,6 +360,38 @@ p {
   margin-top: 12px;
 }
 
+.training-status-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.training-status-card {
+  border: 1px solid rgba(248, 251, 244, 0.16);
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(248, 251, 244, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.training-status-card.wide {
+  grid-column: span 2;
+}
+
+.training-status-card span,
+.training-status-card small {
+  color: rgba(248, 251, 244, 0.7);
+  line-height: 1.4;
+}
+
+.training-status-card strong {
+  color: #f8fbf4;
+  font-size: 1.05rem;
+}
+
 .story-summary {
   display: flex;
   flex-direction: column;
@@ -697,6 +729,7 @@ p {
   .content-grid,
   .advanced-grid,
   .training-grid,
+  .training-status-cards,
   .trained-model-tools,
   .scene-layout,
   .stats-grid,
@@ -706,6 +739,10 @@ p {
 
   .library {
     position: static;
+  }
+
+  .training-status-card.wide {
+    grid-column: auto;
   }
 }
 

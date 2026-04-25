@@ -167,7 +167,7 @@
               <div class="training-grid">
                 <label>
                   학습 기본 모델
-                  <input id="training-base-model" value="Qwen/Qwen2.5-3B-Instruct" />
+                  <input id="training-base-model" value="Qwen/Qwen2.5-1.5B-Instruct" />
                 </label>
                 <label>
                   학습 epoch
@@ -196,6 +196,7 @@
               <div class="training-actions">
                 <button id="training-setup-btn" class="secondary-btn" type="button" disabled>학습 환경 자동 준비</button>
                 <button id="training-start-btn" class="primary-btn" type="button" disabled>원클릭 학습하고 바로 연결</button>
+                <button id="training-cleanup-btn" class="ghost-btn" type="button" disabled>학습 용량 정리</button>
               </div>
               <div class="trained-model-tools">
                 <label>
@@ -208,6 +209,7 @@
               <div id="training-teacher-note" class="note-box compact">
                 교사 Base URL은 비워도 됩니다. 실행 중인 Gemma E2B/E4B 서버가 있으면 자동으로 찾아 학습에만 사용합니다.
               </div>
+              <div id="training-status" class="training-status-cards"></div>
               <pre id="training-log" class="code-box training-log">학습 로그가 여기 표시됩니다.</pre>
             </section>
 

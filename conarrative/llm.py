@@ -456,8 +456,9 @@ class OpenAICompatibleProvider(BaseLLMProvider):
     def health(self) -> Tuple[bool, str]:
         models_url = f"{self.base_url}/models"
         headers = self._headers()
+        health_timeout = min(max(self.settings.timeout_seconds, 1), 5)
         try:
-            response = self.client.get(models_url, headers=headers)
+            response = self.client.get(models_url, headers=headers, timeout=health_timeout)
             if response.status_code < 400:
                 return True, "Connected to OpenAI-compatible backend"
         except Exception as exc:  # pragma: no cover - network dependent
@@ -470,6 +471,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 user="Health check.",
                 temperature=0.0,
                 max_tokens=8,
+                timeout=health_timeout,
             )
             return True, f"Chat completion OK: {text[:80]}"
         except Exception as exc:  # pragma: no cover - network dependent
@@ -493,7 +495,15 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         }
         return payload
 
-    def _chat_text(self, system: str, user: str, temperature: float, max_tokens: int = 1500, stream: bool = False) -> str:
+    def _chat_text(
+        self,
+        system: str,
+        user: str,
+        temperature: float,
+        max_tokens: int = 1500,
+        stream: bool = False,
+        timeout: float | None = None,
+    ) -> str:
         url = f"{self.base_url}/chat/completions"
         payload = self._chat_payload(system, user, temperature=temperature, max_tokens=max_tokens)
         if stream and self.stream_callback is not None:
@@ -502,11 +512,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             except Exception as exc:
                 if self.stream_callback is not None:
                     self.stream_callback(f"\n[stream fallback: {exc}]\n")
-        response = self.client.post(
-            url,
-            headers=self._headers(),
-            json=payload,
-        )
+        request_kwargs: Dict[str, Any] = {"headers": self._headers(), "json": payload}
+        if timeout is not None:
+            request_kwargs["timeout"] = timeout
+        response = self.client.post(url, **request_kwargs)
         response.raise_for_status()
         data = response.json()
         try:

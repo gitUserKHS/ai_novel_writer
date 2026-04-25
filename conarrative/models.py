@@ -411,6 +411,7 @@ class TrainedAdapterOut(BaseModel):
     metadata_path: str = ""
     created_at: str = ""
     training_profile: str = ""
+    is_active: bool = False
 
 
 class UseTrainedAdapterRequest(BaseModel):
@@ -429,7 +430,7 @@ class UseTrainedAdapterOut(BaseModel):
 
 
 class OneClickTrainingRequest(BaseModel):
-    base_model: str = "Qwen/Qwen2.5-3B-Instruct"
+    base_model: str = "Qwen/Qwen2.5-1.5B-Instruct"
     hf_token: str = ""
     epochs: float = Field(default=1.0, ge=0.05, le=20.0)
     per_device_batch_size: int = Field(default=1, ge=1, le=8)
@@ -443,6 +444,9 @@ class OneClickTrainingRequest(BaseModel):
     teacher_api_key: str = ""
     teacher_coaching: bool = True
     teacher_variants_per_prompt: int = Field(default=1, ge=0, le=3)
+    continue_from_active: bool = True
+    keep_successful_runs: int = Field(default=2, ge=0, le=20)
+    keep_failed_runs: int = Field(default=0, ge=0, le=20)
 
 
 class MemoryBundle(BaseModel):

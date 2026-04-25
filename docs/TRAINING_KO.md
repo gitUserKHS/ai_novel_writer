@@ -5,8 +5,12 @@
 ## 현재 정책
 
 - 생성은 가능한 한 최신 `final_adapter` 학습 모델을 자동으로 사용합니다.
+- 실제 생성 슬롯은 story별 `active_adapter`입니다. run 폴더는 기록과 롤백용으로만 남깁니다.
 - Gemma E2B/E4B는 일반 생성 모델이 아니라 학습 때 쓰는 교사 모델로만 사용합니다.
-- 학생 모델 기본값은 `Qwen/Qwen2.5-3B-Instruct`입니다.
+- 학생 모델 기본값은 8GB Windows 환경에서 더 안전한 `Qwen/Qwen2.5-1.5B-Instruct`입니다.
+- 사용자가 더 큰 모델을 입력해도 메모리 오류가 나면 1.5B, 0.5B 순서로 자동 재시도합니다.
+- 새 학습은 후보 어댑터를 만든 뒤 품질 게이트를 통과해야 `active_adapter`로 승격됩니다.
+- 기존 `active_adapter`와 같은 학생 모델로 학습하면 기존 어댑터에서 이어학습합니다.
 - 교사 모델 기본값은 `google/gemma-4-E2B-it`이고, UI에서 `google/gemma-4-E4B-it`로 바꿀 수 있습니다.
 
 ## 한 번에 쓰는 법
@@ -38,6 +42,37 @@ http://127.0.0.1:8080/v1
 - `pairwise_dpo.jsonl`: chosen/rejected 선호학습용 데이터
 - `hard_negative.jsonl`: 실패 후보와 consistency issue
 
+## active_adapter 구조
+
+학습할 때마다 `runs/STORY_ID/날짜-모델/final_adapter`는 계속 생깁니다. 이것은 실험 기록입니다. 생성에 직접 쓰는 모델은 `active_adapters/STORY_ID/final_adapter` 하나입니다.
+
+흐름은 다음과 같습니다.
+
+1. 새 학습 결과를 run 폴더에 후보로 저장합니다.
+2. 후보에 adapter 설정과 학습 성공 기록이 있는지 품질 게이트로 검사합니다.
+3. 통과하면 후보를 `active_adapter`로 복사해 승격합니다.
+4. 생성 서버를 재시작해서 새 active 모델만 사용합니다.
+5. 다음 학습 때 학생 모델이 같으면 기존 active adapter에서 이어학습합니다.
+
+## 용량 관리와 학습 상태
+
+원클릭 학습은 성공 후 자동으로 오래된 학습 산출물을 정리합니다.
+
+- 실제 생성 모델인 `active_adapter`는 삭제하지 않습니다.
+- 성공 run은 기본 2개만 남깁니다.
+- 실패 run과 중간에 실패한 후보 폴더는 기본적으로 정리합니다.
+- 데이터셋과 active 모델 용량은 UI의 학습 상태 카드에 표시됩니다.
+
+UI에서는 다음 정보를 초보자용으로 보여줍니다.
+
+- 현재 학습 모델이 있는지
+- 성공 학습 횟수와 실패 횟수
+- 품질 게이트 점수
+- active, run 기록, 데이터셋이 차지하는 용량
+- 다음 학습이 이어학습인지 새 학습인지
+
+필요하면 `학습 용량 정리` 버튼을 눌러 같은 정리 정책을 수동으로 다시 실행할 수 있습니다.
+
 ## 과적합 방지용 교사 코칭
 
 `teacher_coached_sft.jsonl`은 단순히 같은 장면을 외우게 하지 않기 위한 데이터입니다. 교사 모델은 같은 요청을 보고 다른 좋은 예시를 만들고, 왜 좋은지 평가하며, 학생 모델이 일반화해야 할 원칙을 JSON으로 남깁니다.
@@ -53,7 +88,7 @@ python scripts/train_qlora.py `
     configs/workspace/training/datasets/YOUR_STORY_ID/accepted_sft.jsonl `
     configs/workspace/training/datasets/YOUR_STORY_ID/multi_target_sft.jsonl `
     configs/workspace/training/datasets/YOUR_STORY_ID/teacher_coached_sft.jsonl `
-  --model-name Qwen/Qwen2.5-3B-Instruct `
+  --model-name Qwen/Qwen2.5-1.5B-Instruct `
   --output-dir configs/workspace/training/runs/YOUR_STORY_ID/manual-run `
   --epochs 1 `
   --per-device-batch-size 1 `
@@ -67,3 +102,4 @@ python scripts/train_qlora.py `
 - 교사 Base URL을 비워두면 교사 증류/코칭은 건너뛰고 accepted/MTP 데이터만으로 학습합니다.
 - 학습 모델 서버는 첫 연결 때 모델을 GPU에 올리므로 시간이 걸릴 수 있습니다.
 - 8GB급 GPU에서는 자동으로 낮은 VRAM 프로파일이 적용됩니다.
+- Windows에서 `os error 1455` 또는 페이징 파일 오류가 나면 원클릭 학습은 더 작은 학생 모델로 자동 재시도합니다.

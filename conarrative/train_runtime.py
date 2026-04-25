@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Optional
@@ -15,8 +16,12 @@ from .training import export_training_corpus
 
 LogFn = Callable[[str, float], None]
 
-DEFAULT_TRAINING_MODEL = "Qwen/Qwen2.5-3B-Instruct"
+DEFAULT_TRAINING_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
 DEFAULT_TEACHER_MODEL = "google/gemma-4-E2B-it"
+SAFE_TRAINING_MODEL_FALLBACKS = [
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen/Qwen2.5-0.5B-Instruct",
+]
 
 
 def training_root(config: AppConfig) -> Path:
@@ -35,6 +40,22 @@ def training_runs_dir(config: AppConfig, story_id: str) -> Path:
     path = training_root(config) / "runs" / story_id
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def training_datasets_root(config: AppConfig, story_id: str) -> Path:
+    return training_dataset_dir(config, story_id)
+
+
+def active_adapter_root(config: AppConfig, story_id: str) -> Path:
+    return training_root(config) / "active_adapters" / story_id
+
+
+def active_adapter_dir(config: AppConfig, story_id: str) -> Path:
+    return active_adapter_root(config, story_id) / "final_adapter"
+
+
+def active_adapter_metadata_path(config: AppConfig, story_id: str) -> Path:
+    return active_adapter_root(config, story_id) / "run_metadata.json"
 
 
 def training_venv_dir(config: AppConfig) -> Path:
@@ -484,10 +505,6 @@ def run_one_click_training(
         else:
             teacher_coaching_detail = "Teacher coaching skipped because teacher_base_url or teacher_model was not set."
 
-    run_id = utcnow_iso().replace(":", "-")
-    output_dir = training_runs_dir(config, story_id) / run_id
-    output_dir.mkdir(parents=True, exist_ok=True)
-    metadata_path = output_dir / "run_metadata.json"
     base_model = request.get("base_model") or DEFAULT_TRAINING_MODEL
     hf_token = request.get("hf_token") or os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN", "")
     profile_name = training_profile_name(env_status)
@@ -498,35 +515,35 @@ def run_one_click_training(
         emit("GPU free memory is low. Close LM Studio/Ollama/other GPU apps before training if loading fails.", 0.51)
     if base_model.startswith("google/gemma") and not hf_token:
         emit("No Hugging Face token was provided. Gemma downloads can fail or be rate-limited without one.", 0.52)
-    command = [
-        str(training_python_path(config)),
-        "scripts/train_qlora.py",
-        "--train-file",
-        *train_files,
-        "--model-name",
-        base_model,
-        "--output-dir",
-        str(output_dir),
-        "--epochs",
-        str(request.get("epochs", 1.0)),
-        "--per-device-batch-size",
-        str(request.get("per_device_batch_size", 1)),
-        "--gradient-accumulation-steps",
-        str(request.get("gradient_accumulation_steps", 16)),
-        *profile_args,
-    ]
-    if not env_status.get("bitsandbytes_ok") or not env_status.get("cuda_available"):
-        command.append("--no-4bit")
 
-    emit("Starting LoRA/QLoRA training", 0.55)
     env = os.environ.copy()
     if hf_token:
         env["HF_TOKEN"] = hf_token
         env["HUGGING_FACE_HUB_TOKEN"] = hf_token
-    run_command_live(command, cwd=Path.cwd(), env=env, emit=emit, progress=(0.55, 0.98))
+    trained_model, output_dir, training_attempts = run_training_with_model_fallbacks(
+        config=config,
+        story_id=story_id,
+        requested_model=base_model,
+        train_files=train_files,
+        request=request,
+        env_status=env_status,
+        profile_args=profile_args,
+        env=env,
+        emit=emit,
+    )
+    metadata_path = output_dir / "run_metadata.json"
+    final_adapter_dir = output_dir / "final_adapter"
+    quality_gate = evaluate_training_candidate(
+        final_adapter_dir=final_adapter_dir,
+        training_attempts=training_attempts,
+        distillation_used=distillation_used,
+        teacher_coaching_used=teacher_coaching_used,
+    )
 
     metadata = {
-        "base_model": base_model,
+        "base_model": trained_model,
+        "requested_base_model": base_model,
+        "training_attempts": training_attempts,
         "train_files": train_files,
         "distillation_used": distillation_used,
         "distillation_detail": distillation_detail,
@@ -534,14 +551,60 @@ def run_one_click_training(
         "teacher_coaching_detail": teacher_coaching_detail,
         "teacher_model": teacher_model,
         "teacher_base_url": teacher_base_url,
+        "quality_gate": quality_gate,
+        "active_promoted": False,
         "training_profile": profile_name,
         "training_args": profile_args,
         "output_dir": str(output_dir),
-        "final_adapter_dir": str(output_dir / "final_adapter"),
+        "final_adapter_dir": str(final_adapter_dir),
         "env_status": env_status,
     }
+    if not quality_gate["passed"]:
+        metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+        storage.save_artifact(story_id, "training_run_metadata", str(metadata_path), metadata)
+        raise RuntimeError(f"Training completed but quality gate failed: {quality_gate['detail']}")
+
+    active_paths = promote_active_adapter(
+        config=config,
+        story_id=story_id,
+        final_adapter_dir=final_adapter_dir,
+        metadata=metadata,
+    )
+    metadata["active_promoted"] = True
+    metadata["active_adapter_dir"] = active_paths["active_adapter_dir"]
+    metadata["active_metadata_path"] = active_paths["active_metadata_path"]
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     storage.save_artifact(story_id, "training_run_metadata", str(metadata_path), metadata)
+    storage.save_artifact(
+        story_id,
+        "active_adapter_metadata",
+        active_paths["active_metadata_path"],
+        {"active_adapter_dir": active_paths["active_adapter_dir"], "base_model": trained_model},
+    )
+    cleanup_report = cleanup_training_artifacts(
+        config=config,
+        story_id=story_id,
+        keep_successful_runs=int(request.get("keep_successful_runs", 2)),
+        keep_failed_runs=int(request.get("keep_failed_runs", 0)),
+        preserve_run_dir=output_dir,
+    )
+    metadata["cleanup_report"] = cleanup_report
+    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+    active_adapter_metadata_path(config, story_id).write_text(
+        json.dumps(
+            {
+                **metadata,
+                "is_active": True,
+                "final_adapter_dir": active_paths["active_adapter_dir"],
+                "source_final_adapter_dir": str(final_adapter_dir),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    if cleanup_report["removed_count"]:
+        emit(f"Cleaned training artifacts: removed {cleanup_report['removed_count']} old item(s).", 0.995)
     emit("Training completed", 1.0)
     return {
         "dataset_manifest": manifest,
@@ -562,6 +625,428 @@ def detect_gpu() -> Dict[str, Any]:
         return {"available": False, "name": ""}
     names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     return {"available": bool(names), "name": names[0] if names else ""}
+
+
+def run_training_with_model_fallbacks(
+    *,
+    config: AppConfig,
+    story_id: str,
+    requested_model: str,
+    train_files: list[str],
+    request: Dict[str, Any],
+    env_status: Dict[str, Any],
+    profile_args: list[str],
+    env: Dict[str, str],
+    emit: LogFn,
+) -> tuple[str, Path, list[Dict[str, Any]]]:
+    candidates = training_model_candidates(requested_model, env_status)
+    attempts: list[Dict[str, Any]] = []
+    last_error = ""
+    for index, model_name in enumerate(candidates, start=1):
+        run_id = utcnow_iso().replace(":", "-")
+        suffix = safe_model_suffix(model_name)
+        output_dir = training_runs_dir(config, story_id) / f"{run_id}-{suffix}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        resume_adapter = find_resume_adapter_for_model(config, story_id, model_name, request)
+        command = build_train_command(
+            config=config,
+            train_files=train_files,
+            model_name=model_name,
+            output_dir=output_dir,
+            request=request,
+            profile_args=profile_args,
+            env_status=env_status,
+            resume_adapter=resume_adapter,
+        )
+        attempt = {
+            "model": model_name,
+            "output_dir": str(output_dir),
+            "status": "running",
+            "resume_adapter": str(resume_adapter) if resume_adapter else "",
+        }
+        attempts.append(attempt)
+        if index == 1:
+            emit(f"Starting LoRA/QLoRA training with {model_name}", 0.55)
+        else:
+            emit(f"Retrying training with safer model {model_name}", min(0.95, 0.55 + index * 0.08))
+        try:
+            run_command_live(command, cwd=Path.cwd(), env=env, emit=emit, progress=(0.55, 0.98))
+            attempt["status"] = "succeeded"
+            return model_name, output_dir, attempts
+        except RuntimeError as exc:
+            last_error = str(exc)
+            attempt["status"] = "failed"
+            attempt["error"] = last_error[-2000:]
+            if index >= len(candidates) or not should_retry_training_with_smaller_model(last_error):
+                break
+            emit(
+                "현재 모델 학습이 메모리 문제로 실패했습니다. 더 작은 학생 모델로 자동 재시도합니다.",
+                min(0.95, 0.56 + index * 0.08),
+            )
+    raise RuntimeError(
+        "One-click training failed after automatic model fallback attempts. "
+        "Close GPU-heavy apps or increase the Windows paging file, then retry.\n\n"
+        f"{last_error}"
+    )
+
+
+def build_train_command(
+    *,
+    config: AppConfig,
+    train_files: list[str],
+    model_name: str,
+    output_dir: Path,
+    request: Dict[str, Any],
+    profile_args: list[str],
+    env_status: Dict[str, Any],
+    resume_adapter: Path | None = None,
+) -> list[str]:
+    command = [
+        str(training_python_path(config)),
+        "scripts/train_qlora.py",
+        "--train-file",
+        *train_files,
+        "--model-name",
+        model_name,
+        "--output-dir",
+        str(output_dir),
+        "--epochs",
+        str(request.get("epochs", 1.0)),
+        "--per-device-batch-size",
+        str(request.get("per_device_batch_size", 1)),
+        "--gradient-accumulation-steps",
+        str(request.get("gradient_accumulation_steps", 16)),
+        *profile_args,
+    ]
+    if not env_status.get("bitsandbytes_ok") or not env_status.get("cuda_available"):
+        command.append("--no-4bit")
+    if resume_adapter is not None:
+        command.extend(["--resume-adapter", str(resume_adapter)])
+    return command
+
+
+def find_resume_adapter_for_model(config: AppConfig, story_id: str, model_name: str, request: Dict[str, Any]) -> Path | None:
+    if not bool(request.get("continue_from_active", True)):
+        return None
+    metadata_path = active_adapter_metadata_path(config, story_id)
+    adapter_dir = active_adapter_dir(config, story_id)
+    if not metadata_path.exists() or not adapter_dir.exists():
+        return None
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return None
+    if str(metadata.get("base_model") or "") != model_name:
+        return None
+    return adapter_dir
+
+
+def training_model_candidates(requested_model: str, env_status: Dict[str, Any]) -> list[str]:
+    candidates: list[str] = []
+    requested = (requested_model or DEFAULT_TRAINING_MODEL).strip()
+    if requested:
+        candidates.append(requested)
+    if training_profile_name(env_status) == "low-vram-8gb":
+        for fallback in SAFE_TRAINING_MODEL_FALLBACKS:
+            candidates.append(fallback)
+    return dedupe_preserve_order(candidates)
+
+
+def should_retry_training_with_smaller_model(error_text: str) -> bool:
+    lowered = error_text.lower()
+    memory_markers = [
+        "out of memory",
+        "cuda oom",
+        "paging file",
+        "os error 1455",
+        "1455",
+        "페이징 파일",
+        "not enough memory",
+        "unable to load the base model",
+    ]
+    return any(marker in lowered for marker in memory_markers)
+
+
+def safe_model_suffix(model_name: str) -> str:
+    suffix = "".join(ch if ch.isalnum() else "-" for ch in model_name.lower())
+    suffix = "-".join(part for part in suffix.split("-") if part)
+    return suffix[-80:] or "model"
+
+
+def dedupe_preserve_order(items: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def evaluate_training_candidate(
+    *,
+    final_adapter_dir: Path,
+    training_attempts: list[Dict[str, Any]],
+    distillation_used: bool,
+    teacher_coaching_used: bool,
+) -> Dict[str, Any]:
+    checks: list[str] = []
+    score = 0.0
+    if final_adapter_dir.exists():
+        checks.append("final_adapter exists")
+        score += 0.35
+    adapter_config = final_adapter_dir / "adapter_config.json"
+    if adapter_config.exists():
+        checks.append("adapter_config exists")
+        score += 0.25
+    if any(attempt.get("status") == "succeeded" for attempt in training_attempts):
+        checks.append("training attempt succeeded")
+        score += 0.25
+    if distillation_used:
+        checks.append("teacher distillation used")
+        score += 0.08
+    if teacher_coaching_used:
+        checks.append("teacher coaching used")
+        score += 0.07
+    passed = score >= 0.75
+    detail = ", ".join(checks) if checks else "No candidate checks passed."
+    return {"passed": passed, "score": round(score, 3), "checks": checks, "detail": detail}
+
+
+def promote_active_adapter(
+    *,
+    config: AppConfig,
+    story_id: str,
+    final_adapter_dir: Path,
+    metadata: Dict[str, Any],
+) -> Dict[str, str]:
+    if not final_adapter_dir.exists():
+        raise RuntimeError(f"Cannot promote missing adapter: {final_adapter_dir}")
+    root = active_adapter_root(config, story_id)
+    active_dir = active_adapter_dir(config, story_id)
+    active_metadata = active_adapter_metadata_path(config, story_id)
+    tmp_root = root.with_name(f"{root.name}.tmp")
+    if tmp_root.exists():
+        shutil.rmtree(tmp_root, ignore_errors=True)
+    tmp_adapter = tmp_root / "final_adapter"
+    tmp_root.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(final_adapter_dir, tmp_adapter)
+
+    active_payload = {
+        **metadata,
+        "run_id": "active",
+        "story_id": story_id,
+        "is_active": True,
+        "active_promoted": True,
+        "source_final_adapter_dir": str(final_adapter_dir),
+        "final_adapter_dir": str(active_dir),
+        "promoted_at": utcnow_iso(),
+    }
+    (tmp_root / "run_metadata.json").write_text(json.dumps(active_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if root.exists():
+        shutil.rmtree(root)
+    tmp_root.replace(root)
+    return {"active_adapter_dir": str(active_dir), "active_metadata_path": str(active_metadata)}
+
+
+def cleanup_training_artifacts(
+    *,
+    config: AppConfig,
+    story_id: str,
+    keep_successful_runs: int = 2,
+    keep_failed_runs: int = 0,
+    preserve_run_dir: Path | None = None,
+) -> Dict[str, Any]:
+    runs_dir = training_runs_dir(config, story_id)
+    preserve = str(preserve_run_dir.resolve()) if preserve_run_dir else ""
+    successful: list[Path] = []
+    failed: list[Path] = []
+    orphaned: list[Path] = []
+    for run_dir in runs_dir.iterdir() if runs_dir.exists() else []:
+        if not run_dir.is_dir():
+            continue
+        metadata_path = run_dir / "run_metadata.json"
+        if not metadata_path.exists():
+            orphaned.append(run_dir)
+            continue
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            failed.append(run_dir)
+            continue
+        gate = metadata.get("quality_gate") or {}
+        if metadata.get("active_promoted") or gate.get("passed"):
+            successful.append(run_dir)
+        else:
+            failed.append(run_dir)
+
+    successful.sort(key=_path_mtime, reverse=True)
+    failed.sort(key=_path_mtime, reverse=True)
+    orphaned.sort(key=_path_mtime, reverse=True)
+
+    keep_success = {str(path.resolve()) for path in successful[: max(0, keep_successful_runs)]}
+    keep_fail = {str(path.resolve()) for path in failed[: max(0, keep_failed_runs)]}
+    if preserve:
+        keep_success.add(preserve)
+        keep_fail.add(preserve)
+
+    removed: list[Dict[str, Any]] = []
+    for path in successful:
+        if str(path.resolve()) not in keep_success:
+            removed.append(_remove_artifact_path(path, reason="old_successful_run"))
+    for path in failed:
+        if str(path.resolve()) not in keep_fail:
+            removed.append(_remove_artifact_path(path, reason="failed_run"))
+    for path in orphaned:
+        if str(path.resolve()) != preserve:
+            removed.append(_remove_artifact_path(path, reason="orphaned_run"))
+
+    removed = [item for item in removed if item]
+    return {
+        "removed_count": len(removed),
+        "removed_bytes": sum(int(item.get("bytes", 0)) for item in removed),
+        "removed": removed,
+        "keep_successful_runs": keep_successful_runs,
+        "keep_failed_runs": keep_failed_runs,
+    }
+
+
+def get_training_status(config: AppConfig, story_id: str) -> Dict[str, Any]:
+    runs_dir = training_runs_dir(config, story_id)
+    dataset_dir = training_dataset_dir(config, story_id)
+    active_dir = active_adapter_dir(config, story_id)
+    active_metadata = active_adapter_metadata_path(config, story_id)
+    run_items = _scan_training_runs(runs_dir)
+    successful_runs = [item for item in run_items if item["status"] == "succeeded"]
+    failed_runs = [item for item in run_items if item["status"] == "failed"]
+    active_payload: Dict[str, Any] = {}
+    if active_metadata.exists():
+        try:
+            active_payload = json.loads(active_metadata.read_text(encoding="utf-8-sig"))
+        except Exception:
+            active_payload = {}
+    active_exists = active_dir.exists()
+    active_model = str(active_payload.get("base_model") or "")
+    quality_gate = active_payload.get("quality_gate") or {}
+    disk = {
+        "active_adapter_bytes": directory_size_bytes(active_adapter_root(config, story_id)),
+        "runs_bytes": directory_size_bytes(runs_dir),
+        "datasets_bytes": directory_size_bytes(dataset_dir),
+        "total_bytes": directory_size_bytes(active_adapter_root(config, story_id))
+        + directory_size_bytes(runs_dir)
+        + directory_size_bytes(dataset_dir),
+    }
+    return {
+        "story_id": story_id,
+        "active_exists": active_exists,
+        "active_model": active_model,
+        "active_adapter_dir": str(active_dir) if active_exists else "",
+        "active_updated_at": _mtime_iso(active_metadata) if active_metadata.exists() else "",
+        "quality_score": quality_gate.get("score", 0.0),
+        "quality_passed": bool(quality_gate.get("passed", False)),
+        "quality_detail": quality_gate.get("detail", ""),
+        "training_count": len(successful_runs),
+        "failed_count": len(failed_runs),
+        "run_count": len(run_items),
+        "latest_run": run_items[0] if run_items else {},
+        "continue_from_active": bool(active_exists and active_model),
+        "disk": disk,
+        "disk_human": {key: human_bytes(value) for key, value in disk.items()},
+        "cleanup_policy": {"keep_successful_runs": 2, "keep_failed_runs": 0},
+        "runs": run_items[:8],
+    }
+
+
+def _scan_training_runs(runs_dir: Path) -> list[Dict[str, Any]]:
+    items: list[Dict[str, Any]] = []
+    if not runs_dir.exists():
+        return items
+    for run_dir in runs_dir.iterdir():
+        if not run_dir.is_dir():
+            continue
+        metadata_path = run_dir / "run_metadata.json"
+        metadata: Dict[str, Any] = {}
+        if metadata_path.exists():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
+            except Exception:
+                metadata = {}
+        gate = metadata.get("quality_gate") or {}
+        status = "succeeded" if metadata.get("active_promoted") or gate.get("passed") else "failed"
+        if not metadata_path.exists():
+            status = "failed"
+        items.append(
+            {
+                "run_id": run_dir.name,
+                "status": status,
+                "base_model": str(metadata.get("base_model") or metadata.get("requested_base_model") or ""),
+                "quality_score": gate.get("score", 0.0),
+                "active_promoted": bool(metadata.get("active_promoted", False)),
+                "size_bytes": directory_size_bytes(run_dir),
+                "size_human": human_bytes(directory_size_bytes(run_dir)),
+                "created_at": _mtime_iso(run_dir),
+                "path": str(run_dir),
+            }
+        )
+    items.sort(key=lambda item: item["created_at"], reverse=True)
+    return items
+
+
+def _remove_artifact_path(path: Path, *, reason: str) -> Dict[str, Any]:
+    size = directory_size_bytes(path)
+    try:
+        shutil.rmtree(path)
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        return {"path": str(path), "reason": reason, "bytes": 0, "error": str(exc)}
+    return {"path": str(path), "reason": reason, "bytes": size}
+
+
+def directory_size_bytes(path: Path) -> int:
+    if not path.exists():
+        return 0
+    if path.is_file():
+        try:
+            return path.stat().st_size
+        except OSError:
+            return 0
+    total = 0
+    for child in path.rglob("*"):
+        if child.is_file():
+            try:
+                total += child.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def human_bytes(value: int | float) -> str:
+    size = float(value or 0)
+    units = ["B", "KB", "MB", "GB", "TB"]
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+def _path_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _mtime_iso(path: Path) -> str:
+    from datetime import datetime, timezone
+
+    try:
+        timestamp = path.stat().st_mtime
+    except OSError:
+        timestamp = 0.0
+    return datetime.fromtimestamp(timestamp, timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def find_supported_training_python() -> Dict[str, str]:
@@ -652,15 +1137,20 @@ def run_command_live(
     assert process.stdout is not None
     start, end = progress
     lines_seen = 0
+    output_tail: list[str] = []
     for raw_line in process.stdout:
         line = raw_line.rstrip()
+        if line:
+            output_tail.append(line)
+            output_tail = output_tail[-80:]
         if emit is not None and line:
             lines_seen += 1
             scaled = min(end, start + min(0.95, lines_seen / 200.0) * max(end - start, 0.0))
             emit(line, scaled)
     process.wait()
     if process.returncode != 0:
-        raise RuntimeError(f"Command failed with exit code {process.returncode}: {' '.join(command)}")
+        tail = "\n".join(output_tail[-30:])
+        raise RuntimeError(f"Command failed with exit code {process.returncode}: {' '.join(command)}\n\nLast output:\n{tail}")
 
 
 def load_jsonl(path: str | Path) -> list[Dict[str, Any]]:

@@ -13,6 +13,7 @@ const uiState = {
   trainingEnv: null,
   trainingJobId: null,
   trainingJob: null,
+  trainingStatus: null,
   trainingPollTimer: null,
   trainedAdapters: [],
   generationJob: null,
@@ -47,10 +48,12 @@ const els = {
   trainingTeacherVariants: document.getElementById("training-teacher-variants"),
   trainingSetupBtn: document.getElementById("training-setup-btn"),
   trainingStartBtn: document.getElementById("training-start-btn"),
+  trainingCleanupBtn: document.getElementById("training-cleanup-btn"),
   trainedModelPicker: document.getElementById("trained-model-picker"),
   trainedRefreshBtn: document.getElementById("trained-refresh-btn"),
   trainedUseBtn: document.getElementById("trained-use-btn"),
   trainingTeacherNote: document.getElementById("training-teacher-note"),
+  trainingStatus: document.getElementById("training-status"),
   trainingLog: document.getElementById("training-log"),
   generationStream: document.getElementById("generation-stream"),
   outlineList: document.getElementById("outline-list"),
@@ -107,6 +110,18 @@ function formatGib(value) {
   return `${value.toFixed(1)} GiB`;
 }
 
+function formatBytes(value) {
+  let size = Number(value || 0);
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  for (const unit of units) {
+    if (size < 1024 || unit === "TB") {
+      return unit === "B" ? `${Math.round(size)} B` : `${size.toFixed(1)} ${unit}`;
+    }
+    size /= 1024;
+  }
+  return `${size.toFixed(1)} TB`;
+}
+
 function formatTrainingSummary(env) {
   const parts = [];
   if (env.ready) {
@@ -137,6 +152,7 @@ function updateStoryButtons(enabled) {
   els.deleteStoryBtn.disabled = !enabled;
   els.trainingSetupBtn.disabled = !enabled;
   els.trainingStartBtn.disabled = !enabled;
+  els.trainingCleanupBtn.disabled = !enabled;
   els.trainedRefreshBtn.disabled = !enabled;
   els.trainedUseBtn.disabled = !enabled || !uiState.trainedAdapters.length;
 }
@@ -152,6 +168,7 @@ function renderEmptyStoryState() {
   uiState.datasets = {};
   uiState.kg = [];
   uiState.trainedAdapters = [];
+  uiState.trainingStatus = null;
   els.storyTitle.textContent = "스토리를 선택하거나 새로 시작하세요";
   els.storySummary.textContent = "왼쪽 목록에서 기존 스토리를 열거나 위에서 프롬프트 한 줄로 새 스토리를 시작할 수 있습니다.";
   els.outlineList.innerHTML = `<div class="empty-state">빠른 시작을 실행하면 여기에 아웃라인이 생깁니다.</div>`;
@@ -370,6 +387,8 @@ function renderTrainingPanel() {
     els.trainingLog.textContent = "학습 로그가 여기 표시됩니다.";
     els.trainingSetupBtn.disabled = true;
     els.trainingStartBtn.disabled = true;
+    els.trainingCleanupBtn.disabled = true;
+    renderTrainingStatus();
     return;
   }
   els.trainingReadyChip.textContent = env.ready ? "학습 환경 준비 완료" : "학습 환경 준비 필요";
@@ -393,9 +412,58 @@ function renderTrainingPanel() {
   }
   els.trainingSetupBtn.disabled = !hasStory;
   els.trainingStartBtn.disabled = !hasStory;
+  els.trainingCleanupBtn.disabled = !hasStory;
   els.trainedRefreshBtn.disabled = !hasStory;
   els.trainedUseBtn.disabled = !hasStory || !uiState.trainedAdapters.length;
+  renderTrainingStatus();
   renderTrainedAdapters();
+}
+
+function renderTrainingStatus() {
+  if (!els.trainingStatus) {
+    return;
+  }
+  const status = uiState.trainingStatus;
+  if (!uiState.selectedStoryId || !status) {
+    els.trainingStatus.innerHTML = `<div class="training-status-card wide"><strong>학습 상태</strong><span>스토리를 선택하면 현재 학습 모델 상태가 표시됩니다.</span></div>`;
+    return;
+  }
+  const activeText = status.active_exists ? "사용 중" : "아직 없음";
+  const activeModel = status.active_model || "학습 모델 없음";
+  const qualityScore = Number(status.quality_score || 0);
+  const qualityText = status.active_exists ? `${Math.round(qualityScore * 100)}점` : "-";
+  const totalSize = status.disk_human?.total_bytes || "0 B";
+  const activeSize = status.disk_human?.active_adapter_bytes || "0 B";
+  const runsSize = status.disk_human?.runs_bytes || "0 B";
+  const datasetSize = status.disk_human?.datasets_bytes || "0 B";
+  const continueText = status.continue_from_active ? "다음 학습은 이어학습" : "다음 학습은 새로 시작";
+  els.trainingStatus.innerHTML = `
+    <div class="training-status-card">
+      <span>현재 학습 모델</span>
+      <strong>${escapeHtml(activeText)}</strong>
+      <small>${escapeHtml(activeModel)}</small>
+    </div>
+    <div class="training-status-card">
+      <span>성공 학습</span>
+      <strong>${escapeHtml(status.training_count || 0)}회</strong>
+      <small>실패 ${escapeHtml(status.failed_count || 0)}회 / 기록 ${escapeHtml(status.run_count || 0)}개</small>
+    </div>
+    <div class="training-status-card">
+      <span>품질 게이트</span>
+      <strong>${escapeHtml(qualityText)}</strong>
+      <small>${escapeHtml(status.quality_detail || "학습 후 표시됩니다")}</small>
+    </div>
+    <div class="training-status-card">
+      <span>용량</span>
+      <strong>${escapeHtml(totalSize)}</strong>
+      <small>active ${escapeHtml(activeSize)} / runs ${escapeHtml(runsSize)} / data ${escapeHtml(datasetSize)}</small>
+    </div>
+    <div class="training-status-card wide">
+      <span>관리 방식</span>
+      <strong>${escapeHtml(continueText)}</strong>
+      <small>성공 run ${escapeHtml(status.cleanup_policy?.keep_successful_runs ?? 2)}개만 보관, 실패 run은 자동 정리합니다.</small>
+    </div>
+  `;
 }
 
 function renderTrainedAdapters() {
@@ -407,7 +475,8 @@ function renderTrainedAdapters() {
   }
   els.trainedModelPicker.innerHTML = adapters
     .map((adapter, index) => {
-      const label = `${adapter.run_id || `run ${index + 1}`} / ${adapter.base_model || "base model"} / ${adapter.training_profile || "profile"}`;
+      const prefix = adapter.is_active ? "ACTIVE / " : "";
+      const label = `${prefix}${adapter.run_id || `run ${index + 1}`} / ${adapter.base_model || "base model"} / ${adapter.training_profile || "profile"}`;
       return `<option value="${escapeHtml(adapter.adapter_dir)}">${escapeHtml(label)}</option>`;
     })
     .join("");
@@ -542,6 +611,16 @@ async function loadTrainedAdapters() {
   renderTrainedAdapters();
 }
 
+async function loadTrainingStatus() {
+  if (!uiState.selectedStoryId) {
+    uiState.trainingStatus = null;
+    renderTrainingStatus();
+    return;
+  }
+  uiState.trainingStatus = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/training/status`);
+  renderTrainingStatus();
+}
+
 async function loadSettings() {
   const settings = await api("/api/runtime-settings");
   for (const [key, value] of Object.entries(settings)) {
@@ -578,13 +657,14 @@ async function selectStory(storyId) {
   renderStories();
   updateStoryButtons(true);
   const storyPath = encodeURIComponent(storyId);
-  const [detail, scenes, state, datasets, kg, artifacts] = await Promise.all([
+  const [detail, scenes, state, datasets, kg, artifacts, trainingStatus] = await Promise.all([
     api(`/api/stories/${storyPath}`),
     api(`/api/stories/${storyPath}/scenes`),
     api(`/api/stories/${storyPath}/state`),
     api(`/api/stories/${storyPath}/datasets`),
     api(`/api/stories/${storyPath}/kg`),
     api(`/api/stories/${storyPath}/artifacts`),
+    api(`/api/stories/${storyPath}/training/status`),
   ]);
   uiState.storyDetail = detail;
   uiState.outline = detail.outline || [];
@@ -593,6 +673,7 @@ async function selectStory(storyId) {
   uiState.datasets = datasets;
   uiState.kg = kg.items || [];
   uiState.artifacts = artifacts.items || [];
+  uiState.trainingStatus = trainingStatus;
   renderSummary();
   renderOutline();
   renderScenes();
@@ -764,7 +845,7 @@ async function handleTrainingStart() {
   const job = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/training/auto`, {
     method: "POST",
     body: JSON.stringify({
-      base_model: els.trainingBaseModel.value.trim() || "Qwen/Qwen2.5-3B-Instruct",
+      base_model: els.trainingBaseModel.value.trim() || "Qwen/Qwen2.5-1.5B-Instruct",
       hf_token: els.trainingHfToken.value.trim(),
       epochs: Number(els.trainingEpochs.value || 1.0),
       use_distillation: true,
@@ -777,7 +858,23 @@ async function handleTrainingStart() {
   els.quickstartNote.textContent = "원클릭 학습을 시작했습니다. 완료되면 최신 학습 모델을 자동으로 연결합니다.";
   await pollTrainingJob(job.id);
   await loadTrainedAdapters();
+  await loadTrainingStatus();
   await Promise.all([loadSettings(), loadHealth(), loadModelCatalog()]);
+}
+
+async function handleTrainingCleanup() {
+  if (!uiState.selectedStoryId) {
+    return;
+  }
+  const result = await api(`/api/stories/${encodeURIComponent(uiState.selectedStoryId)}/training/cleanup`, {
+    method: "POST",
+  });
+  uiState.trainingStatus = result.status;
+  renderTrainingStatus();
+  const removed = result.cleanup_report?.removed_count || 0;
+  const bytes = result.cleanup_report?.removed_bytes || 0;
+  els.quickstartNote.textContent = `학습 용량 정리 완료: ${removed}개 삭제, ${formatBytes(bytes)} 확보`;
+  await loadTrainedAdapters();
 }
 
 async function handleUseTrainedModel() {
@@ -878,6 +975,7 @@ function bindEvents() {
   els.deleteStoryBtn.addEventListener("click", setBusy(els.deleteStoryBtn, "삭제 중...", handleDeleteStory));
   els.trainingSetupBtn.addEventListener("click", setBusy(els.trainingSetupBtn, "학습 환경 준비 중...", handleTrainingSetup));
   els.trainingStartBtn.addEventListener("click", setBusy(els.trainingStartBtn, "학습 시작 중...", handleTrainingStart));
+  els.trainingCleanupBtn.addEventListener("click", setBusy(els.trainingCleanupBtn, "정리 중...", handleTrainingCleanup));
   els.trainedRefreshBtn.addEventListener("click", setBusy(els.trainedRefreshBtn, "새로고침 중...", loadTrainedAdapters));
   els.trainedUseBtn.addEventListener("click", setBusy(els.trainedUseBtn, "연결 중...", handleUseTrainedModel));
   els.trainingTeacherBaseUrl.addEventListener("input", renderTrainingPanel);

@@ -88,7 +88,14 @@ UI에서 스토리를 선택하고 `원클릭 학습` 패널을 사용합니다.
 - Gemma E2B/E4B 교사 모델로 prompt-only 데이터 증류
 - 교사 모델이 만든 좋은 예시와 평가를 `teacher_coached_sft.jsonl`로 추가
 - LoRA/QLoRA 학습 실행
+- 메모리 부족 또는 Windows 페이징 파일 오류가 나면 더 작은 학생 모델로 자동 재시도
+- 성공 후보를 품질 게이트로 검사하고 통과한 결과만 `active_adapter`로 승격
+- 기존 `active_adapter`와 같은 학생 모델이면 이어학습
 - 학습 완료 어댑터를 OpenAI-compatible 생성 서버로 자동 연결
+
+학습 run 폴더는 재현과 롤백을 위한 기록입니다. 실제 생성에는 story별 `active_adapter`만 우선 사용합니다.
+UI의 학습 상태 카드에서 성공 학습 횟수, 실패 횟수, 품질 점수, active/run/data 용량을 확인할 수 있습니다.
+원클릭 학습 후 오래된 실패 산출물은 자동 정리되고, 필요하면 `학습 용량 정리` 버튼으로 다시 정리할 수 있습니다.
 
 자세한 학습 설명은 [docs/TRAINING_KO.md](docs/TRAINING_KO.md)를 참고하세요.
 
