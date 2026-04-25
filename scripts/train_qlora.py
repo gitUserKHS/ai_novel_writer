@@ -11,7 +11,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="QLoRA/SFT trainer for CoNarrative Studio datasets")
     parser.add_argument("--train-file", required=True, nargs="+", help="One or more JSONL files with a messages field")
     parser.add_argument("--eval-file", default=None, help="Optional validation JSONL file")
-    parser.add_argument("--model-name", default="google/gemma-4-E2B-it")
+    parser.add_argument("--model-name", default="Qwen/Qwen2.5-1.5B-Instruct")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--max-seq-length", type=int, default=4096)
     parser.add_argument("--epochs", type=float, default=1.0)
@@ -30,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-4bit", action="store_true", help="Disable 4-bit quantization")
     parser.add_argument("--allow-cpu", action="store_true", help="Allow CPU training for debugging only")
     parser.add_argument("--trust-remote-code", action="store_true")
+    parser.add_argument("--resume-adapter", default="", help="Existing LoRA adapter directory to continue training from")
     return parser.parse_args()
 
 
@@ -181,7 +182,7 @@ def main() -> None:
     try:
         import torch
         from datasets import Dataset
-        from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
+        from peft import LoraConfig, PeftModel, TaskType, get_peft_model, prepare_model_for_kbit_training
         from transformers import (
             AutoModelForCausalLM,
             AutoTokenizer,
@@ -234,15 +235,20 @@ def main() -> None:
     if use_4bit:
         model = prepare_model_for_kbit_training(model)
 
-    peft_config = LoraConfig(
-        task_type=TaskType.CAUSAL_LM,
-        r=effective_lora_r,
-        lora_alpha=effective_lora_alpha,
-        lora_dropout=args.lora_dropout,
-        bias="none",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-    )
-    model = get_peft_model(model, peft_config)
+    resume_adapter = Path(args.resume_adapter) if args.resume_adapter else None
+    if resume_adapter and resume_adapter.exists():
+        print(f"Continuing training from adapter: {resume_adapter}")
+        model = PeftModel.from_pretrained(model, str(resume_adapter), is_trainable=True)
+    else:
+        peft_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            r=effective_lora_r,
+            lora_alpha=effective_lora_alpha,
+            lora_dropout=args.lora_dropout,
+            bias="none",
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        )
+        model = get_peft_model(model, peft_config)
     if hasattr(model, "print_trainable_parameters"):
         model.print_trainable_parameters()
 
